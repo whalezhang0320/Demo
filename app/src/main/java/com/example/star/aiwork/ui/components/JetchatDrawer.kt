@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -154,22 +155,17 @@ fun JetchatDrawerContent(
         }
 
         DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
-        DrawerItemHeader("Recent Profiles")
-        ProfileItem(
-            "Ali Conors (you)", meProfile.photo,
+        DrawerItemHeader("Settings")
+        SettingsItem(
+            "Model Selection & API Settings",
             selectedMenu == meProfile.userId,
         ) {
             onProfileClicked(meProfile.userId)
         }
-        ProfileItem(
-            "Taylor Brooks", colleagueProfile.photo,
-            selectedMenu == colleagueProfile.userId,
-        ) {
-            onProfileClicked(colleagueProfile.userId)
-        }
+
         if (widgetAddingIsSupported(LocalContext.current)) {
             DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
-            DrawerItemHeader("Settings")
+            DrawerItemHeader("Widget")
             WidgetDiscoverability()
         }
     }
@@ -317,15 +313,14 @@ private fun AgentItem(agent: Agent, selected: Boolean, onAgentClicked: () -> Uni
 
 
 /**
- * 个人资料列表项组件。
+ * 设置列表项组件。
  *
- * @param text 用户名。
- * @param profilePic 头像资源 ID。
+ * @param text 文本。
  * @param selected 是否被选中。
  * @param onProfileClicked 点击回调。
  */
 @Composable
-private fun ProfileItem(text: String, @DrawableRes profilePic: Int?, selected: Boolean = false, onProfileClicked: () -> Unit) {
+private fun SettingsItem(text: String, selected: Boolean = false, onProfileClicked: () -> Unit) {
     val background = if (selected) {
         Modifier.background(MaterialTheme.colorScheme.primaryContainer)
     } else {
@@ -344,16 +339,14 @@ private fun ProfileItem(text: String, @DrawableRes profilePic: Int?, selected: B
         val paddingSizeModifier = Modifier
             .padding(start = 16.dp, top = 16.dp, bottom = 16.dp)
             .size(24.dp)
-        if (profilePic != null) {
-            Image(
-                painter = painterResource(id = profilePic),
-                modifier = paddingSizeModifier.then(Modifier.clip(CircleShape)),
-                contentScale = ContentScale.Crop,
-                contentDescription = null,
-            )
-        } else {
-            Spacer(modifier = paddingSizeModifier)
-        }
+        
+        Icon(
+            imageVector = Icons.Default.Settings,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = paddingSizeModifier,
+            contentDescription = null
+        )
+        
         Text(
             text,
             style = MaterialTheme.typography.bodyMedium,

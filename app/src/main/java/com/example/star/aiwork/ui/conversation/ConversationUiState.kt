@@ -16,6 +16,7 @@
 
 package com.example.star.aiwork.ui.conversation
 
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +62,9 @@ class ConversationUiState(
     var isRecording: Boolean by mutableStateOf(false)
     // 输入框文本状态
     var textFieldValue: TextFieldValue by mutableStateOf(TextFieldValue())
+    
+    // 暂存选中的图片 URI
+    var selectedImageUri: Uri? by mutableStateOf(null)
 
     /**
      * 添加一条新消息到列表顶部。
@@ -91,6 +95,7 @@ class ConversationUiState(
  * @property content 消息文本内容。
  * @property timestamp 消息时间戳字符串。
  * @property image 可选的附件图片资源 ID。
+ * @property imageUrl 可选的附件图片 URI 字符串（用户上传或网络图片）。
  * @property authorImage 作者头像资源 ID。
  */
 @Immutable
@@ -99,5 +104,6 @@ data class Message(
     val content: String,
     val timestamp: String,
     val image: Int? = null,
+    val imageUrl: String? = null,
     val authorImage: Int = if (author == "me") R.drawable.ali else R.drawable.someone_else,
 )

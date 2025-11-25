@@ -40,6 +40,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
  * 负责管理应用的用户配置，包括：
  * - AI 提供商设置列表 (序列化为 JSON 存储)
  * - AI 模型参数 (Temperature, Max Tokens, Stream Response)
+ * - 当前选中的 Provider 和 Model
  *
  * 使用 Jetpack DataStore 进行异步、持久化的数据存储。
  */
@@ -58,6 +59,8 @@ class UserPreferencesRepository(private val context: Context) {
         val TEMPERATURE = floatPreferencesKey("temperature")
         val MAX_TOKENS = intPreferencesKey("max_tokens")
         val STREAM_RESPONSE = booleanPreferencesKey("stream_response")
+        val ACTIVE_PROVIDER_ID = stringPreferencesKey("active_provider_id")
+        val ACTIVE_MODEL_ID = stringPreferencesKey("active_model_id")
     }
 
     /**
@@ -142,6 +145,40 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun updateStreamResponse(newStreamResponse: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.STREAM_RESPONSE] = newStreamResponse
+        }
+    }
+
+    /**
+     * 当前选中的 Provider ID 流。
+     */
+    val activeProviderId: Flow<String?> = context.dataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.ACTIVE_PROVIDER_ID]
+        }
+
+    /**
+     * 更新当前选中的 Provider ID。
+     */
+    suspend fun updateActiveProviderId(id: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ACTIVE_PROVIDER_ID] = id
+        }
+    }
+
+    /**
+     * 当前选中的 Model ID 流。
+     */
+    val activeModelId: Flow<String?> = context.dataStore.data
+        .map { preferences ->
+            preferences[PreferencesKeys.ACTIVE_MODEL_ID]
+        }
+
+    /**
+     * 更新当前选中的 Model ID。
+     */
+    suspend fun updateActiveModelId(id: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.ACTIVE_MODEL_ID] = id
         }
     }
 }

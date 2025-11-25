@@ -10,6 +10,7 @@ import com.example.star.aiwork.domain.model.ProviderSetting
 import com.example.star.aiwork.domain.TextGenerationParams
 import com.example.star.aiwork.ui.ai.MessageChunk
 import com.example.star.aiwork.ui.ai.UIMessage
+import com.example.star.aiwork.ui.ai.UIMessagePart
 import com.example.star.aiwork.infra.util.KeyRoulette
 import com.example.star.aiwork.infra.util.await
 import com.example.star.aiwork.infra.util.configureClientWithProxy
@@ -79,7 +80,12 @@ class ChatCompletionsAPI(
         messages: List<UIMessage>,
         params: TextGenerationParams
     ): Flow<MessageChunk> = flow {
+        // 1. 构建流式请求：关键在于设置 stream = true，告诉服务器我们要长连接推送
         val request = buildRequest(providerSetting, messages, params, stream = true)
+        
+        // 2. 发送请求并配置超时
+        // 这里必须将 readTimeout 设置为 0 (无限)，因为 AI 生成长文本可能需要数分钟，
+        // 默认的 30s 超时会导致连接中断。
         val response = client.configureClientWithProxy(providerSetting.proxy)
             .newBuilder()
             .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -91,27 +97,35 @@ class ChatCompletionsAPI(
             error("Failed to stream text: ${response.code} ${response.body?.string()}")
         }
 
+        // 3. 获取原始字节流并包装为字符缓冲流，方便按行读取 SSE 数据
         val source = response.body?.source() ?: error("Empty response body")
         val reader = BufferedReader(source.inputStream().reader())
 
         try {
+            // 4. 循环读取 SSE 事件流
             var line: String? = reader.readLine()
             while (line != null) {
+                // SSE 协议规定有效负载以 "data: " 开头，忽略心跳包或注释
                 if (line.startsWith("data: ")) {
                     val data = line.substring(6).trim()
+                    
+                    // 5. 检测结束信号：OpenAI 协议规定以 [DONE] 标记流结束
                     if (data == "[DONE]") break
+                    
                     try {
-                        // Decode into OpenAIChunk DTO first
+                        // 6. 反序列化：将 JSON 字符串解析为 OpenAIChunk DTO
                         val chunk = json.decodeFromString<OpenAIChunk>(data)
+                        // 7. 实时发射：将数据块转换为 UI 模型并通过 Flow 推送给上层
                         emit(chunk.toMessageChunk())
                     } catch (e: Exception) {
-                        // Ignore malformed chunks or keepalive
+                        // 容错处理：忽略解析失败的脏数据包，保证整个流不中断
                         // e.printStackTrace() // Uncomment for debug
                     }
                 }
-                line = reader.readLine()
+                line = reader.readLine() // 读取下一行
             }
         } finally {
+            // 8. 资源释放：确保网络流被正确关闭，防止内存泄漏
             reader.close()
             response.close()
         }
@@ -137,9 +151,33 @@ class ChatCompletionsAPI(
             messages.forEach { msg ->
                 add(buildJsonObject {
                     put("role", msg.role.name.lowercase())
-                    // Simplified content handling for now. 
-                    // In production, handle multimodal content (images) here.
-                    put("content", msg.toText())
+                    
+                    // 检查是否包含多模态内容 (非纯文本)
+                    val hasNonTextParts = msg.parts.any { it !is UIMessagePart.Text }
+                    
+                    if (hasNonTextParts) {
+                        put("content", buildJsonArray {
+                            msg.parts.forEach { part ->
+                                when (part) {
+                                    is UIMessagePart.Text -> add(buildJsonObject {
+                                        put("type", "text")
+                                        put("text", part.text)
+                                    })
+                                    is UIMessagePart.Image -> add(buildJsonObject {
+                                        put("type", "image_url")
+                                        put("image_url", buildJsonObject {
+                                            put("url", part.url)
+                                        })
+                                    })
+                                    // 暂不处理其他类型，如需支持可在此扩展
+                                    else -> {}
+                                }
+                            }
+                        })
+                    } else {
+                        // 纯文本消息
+                        put("content", msg.toText())
+                    }
                 })
             }
         }

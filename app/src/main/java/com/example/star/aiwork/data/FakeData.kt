@@ -32,59 +32,7 @@ import com.example.star.aiwork.ui.profile.ProfileScreenState
  * 初始消息列表。
  * 包含用于演示的假对话数据。
  */
-val initialMessages = listOf(
-    Message(
-        "me",
-        "Check it out!",
-        "8:07 PM",
-    ),
-    Message(
-        "me",
-        "Thank you!$EMOJI_PINK_HEART",
-        "8:06 PM",
-        R.drawable.sticker,
-    ),
-    Message(
-        "Taylor Brooks",
-        "You can use all the same stuff",
-        "8:05 PM",
-    ),
-    Message(
-        "Taylor Brooks",
-        "@aliconors Take a look at the `Flow.collectAsStateWithLifecycle()` APIs",
-        "8:05 PM",
-    ),
-    Message(
-        "John Glenn",
-        "Compose newbie as well $EMOJI_FLAMINGO, have you looked at the JetNews sample? " +
-            "Most blog posts end up out of date pretty fast but this sample is always up to " +
-            "date and deals with async data loading (it's faked but the same idea " +
-            "applies) $EMOJI_POINTS https://goo.gle/jetnews",
-        "8:04 PM",
-    ),
-    Message(
-        "me",
-        "Compose newbie: I’ve scourged the internet for tutorials about async data " +
-            "loading but haven’t found any good ones $EMOJI_MELTING $EMOJI_CLOUDS. " +
-            "What’s the recommended way to load async data and emit composable widgets?",
-        "8:03 PM",
-    ),
-    Message(
-        "Shangeeth Sivan",
-        "Does anyone know about Glance Widgets its the new way to build widgets in Android!",
-        "8:08 PM",
-    ),
-    Message(
-        "Taylor Brooks",
-        "Wow! I never knew about Glance Widgets when was this added to the android ecosystem",
-        "8:10 PM",
-    ),
-    Message(
-        "John Glenn",
-        "Yeah its seems to be pretty new!",
-        "8:12 PM",
-    ),
-)
+val initialMessages = emptyList<Message>()
 
 /**
  * 未读消息列表（用于演示）。
@@ -166,30 +114,18 @@ val freeProviders = listOf(
         apiKey = "sk-sjsubcwdyqrqwzuvaepkgciiwxupgjjulpwuynwrpjkpohgx",
         models = listOf(
             Model(
-                modelId = "Qwen/Qwen2.5-7B-Instruct",
+                modelId = "Qwen/Qwen3-8B",
+                displayName = "Qwen 3 8B"
+            ),
+            Model(
+                modelId = "THUDM/GLM-4.1V-9B-Thinking",
+                displayName = "GLM-4.1V 9B"
+            ),
+             // 1. 添加小型模型 (假设 SiliconFlow 有 1.5B 或类似的小模型，这里以 Qwen 1.5B 为例作为示意)
+            Model(
+                modelId = "Qwen/Qwen2.5-7B-Instruct", // 请确认实际的模型 ID
                 displayName = "Qwen 2.5 7B"
             ),
-            Model(
-                modelId = "THUDM/glm-4-9b-chat",
-                displayName = "GLM-4 9B"
-            )
-        )
-    ),
-    ProviderSetting.OpenAI(
-        id = "deepseek",
-        name = "DeepSeek",
-        baseUrl = "https://api.deepseek.com",
-        // 请在这里填入您的 DeepSeek API Key
-        apiKey = "sk-a13bd2345be44a4b89d12a3fb81327cd",
-        models = listOf(
-            Model(
-                modelId = "deepseek-chat",
-                displayName = "DeepSeek V3"
-            ),
-            Model(
-                modelId = "deepseek-reasoner",
-                displayName = "DeepSeek R1"
-            )
         )
     )
 )

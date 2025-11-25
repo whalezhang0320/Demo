@@ -18,66 +18,67 @@ package com.example.star.aiwork.ui.profile
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.star.aiwork.data.colleagueProfile
-import com.example.star.aiwork.data.meProfile
+import com.example.star.aiwork.data.freeProviders
 import com.example.star.aiwork.ui.theme.JetchatTheme
 
 /**
- * 个人资料屏幕的各种预览配置。
+ * 模型设置屏幕的各种预览配置。
  *
- * 这些预览展示了在不同宽度、不同主题（亮色/暗色）以及查看不同用户（自己/他人）时的 UI 表现。
+ * 这些预览展示了在不同宽度、不同主题（亮色/暗色）下的 UI 表现。
  */
 
-/**
- * 个人资料屏幕的各种预览配置。
- *
- * 这些预览展示了在不同宽度、不同主题（亮色/暗色）以及查看不同用户（自己/他人）时的 UI 表现。
- */
-
-@Preview(widthDp = 340, name = "340 width - Me")
+@Preview(widthDp = 340, name = "340 width")
 @Composable
 fun ProfilePreview340() {
     JetchatTheme {
-        ProfileScreen(meProfile)
+        ProfileScreen(
+            providerSettings = freeProviders,
+            activeProviderId = null,
+            activeModelId = null,
+            onUpdateSettings = {},
+            onSelectModel = { _, _ -> }
+        )
     }
 }
 
-@Preview(widthDp = 480, name = "480 width - Me")
+@Preview(widthDp = 480, name = "480 width")
 @Composable
-fun ProfilePreview480Me() {
+fun ProfilePreview480() {
     JetchatTheme {
-        ProfileScreen(meProfile)
+        ProfileScreen(
+            providerSettings = freeProviders,
+            activeProviderId = "silicon_cloud",
+            activeModelId = "Qwen/Qwen2.5-7B-Instruct",
+            onUpdateSettings = {},
+            onSelectModel = { _, _ -> }
+        )
     }
 }
 
-@Preview(widthDp = 480, name = "480 width - Other")
+@Preview(widthDp = 340, name = "340 width - Dark")
 @Composable
-fun ProfilePreview480Other() {
-    JetchatTheme {
-        ProfileScreen(colleagueProfile)
-    }
-}
-
-@Preview(widthDp = 340, name = "340 width - Me - Dark")
-@Composable
-fun ProfilePreview340MeDark() {
+fun ProfilePreview340Dark() {
     JetchatTheme(isDarkTheme = true) {
-        ProfileScreen(meProfile)
+        ProfileScreen(
+            providerSettings = freeProviders,
+            activeProviderId = null,
+            activeModelId = null,
+            onUpdateSettings = {},
+            onSelectModel = { _, _ -> }
+        )
     }
 }
 
-@Preview(widthDp = 480, name = "480 width - Me - Dark")
+@Preview(widthDp = 480, name = "480 width - Dark")
 @Composable
-fun ProfilePreview480MeDark() {
+fun ProfilePreview480Dark() {
     JetchatTheme(isDarkTheme = true) {
-        ProfileScreen(meProfile)
-    }
-}
-
-@Preview(widthDp = 480, name = "480 width - Other - Dark")
-@Composable
-fun ProfilePreview480OtherDark() {
-    JetchatTheme(isDarkTheme = true) {
-        ProfileScreen(colleagueProfile)
+        ProfileScreen(
+            providerSettings = freeProviders,
+            activeProviderId = "deepseek",
+            activeModelId = "deepseek-chat",
+            onUpdateSettings = {},
+            onSelectModel = { _, _ -> }
+        )
     }
 }

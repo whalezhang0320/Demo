@@ -57,6 +57,8 @@ class ConversationFragment : Fragment() {
                 val temperature by activityViewModel.temperature.collectAsStateWithLifecycle()
                 val maxTokens by activityViewModel.maxTokens.collectAsStateWithLifecycle()
                 val streamResponse by activityViewModel.streamResponse.collectAsStateWithLifecycle()
+                val activeProviderId by activityViewModel.activeProviderId.collectAsStateWithLifecycle()
+                val activeModelId by activityViewModel.activeModelId.collectAsStateWithLifecycle()
 
                 JetchatTheme {
                     ConversationContent(
@@ -75,6 +77,8 @@ class ConversationFragment : Fragment() {
                         },
                         // 传递从 ViewModel 获取的配置参数
                         providerSettings = providerSettings,
+                        activeProviderId = activeProviderId,
+                        activeModelId = activeModelId,
                         temperature = temperature,
                         maxTokens = maxTokens,
                         streamResponse = streamResponse,

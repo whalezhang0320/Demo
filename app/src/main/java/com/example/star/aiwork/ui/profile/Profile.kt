@@ -16,314 +16,300 @@
 
 package com.example.star.aiwork.ui.profile
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.star.aiwork.ui.FunctionalityNotAvailablePopup
-import com.example.star.aiwork.R
-import com.example.star.aiwork.ui.components.AnimatingFabContent
-import com.example.star.aiwork.ui.components.baselineHeight
-import com.example.star.aiwork.data.colleagueProfile
-import com.example.star.aiwork.data.meProfile
-import com.example.star.aiwork.ui.theme.JetchatTheme
+import com.example.star.aiwork.data.provider.OpenAIProvider
+import com.example.star.aiwork.domain.model.ProviderSetting
+import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import java.util.UUID
 
 /**
- * 个人资料屏幕。
- *
- * 显示用户的详细信息，如头像、姓名、职位、状态等。
- * 支持滚动，并包含一个根据滚动状态收缩/展开的 FAB。
- *
- * @param userData 用户个人资料数据。
- * @param nestedScrollInteropConnection 用于与 View 系统（如 CoordinatorLayout）进行嵌套滚动的连接器。
+ * 模型与密钥设置页面。
+ * 替代原有的个人资料页面，用于管理 AI 提供商、API Key 和模型。
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
-    userData: ProfileScreenState,
-    nestedScrollInteropConnection: NestedScrollConnection = rememberNestedScrollInteropConnection(),
+    providerSettings: List<ProviderSetting>,
+    activeProviderId: String?,
+    activeModelId: String?,
+    onUpdateSettings: (List<ProviderSetting>) -> Unit,
+    onSelectModel: (String, String) -> Unit,
+    onBack: () -> Unit = {}
 ) {
-    var functionalityNotAvailablePopupShown by remember { mutableStateOf(false) }
-    if (functionalityNotAvailablePopupShown) {
-        FunctionalityNotAvailablePopup { functionalityNotAvailablePopupShown = false }
-    }
-
-    val scrollState = rememberScrollState()
-
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(nestedScrollInteropConnection)
-            .systemBarsPadding(),
-    ) {
-        Surface {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState),
-            ) {
-                ProfileHeader(
-                    scrollState,
-                    userData,
-                    this@BoxWithConstraints.maxHeight,
-                )
-                UserInfoFields(userData, this@BoxWithConstraints.maxHeight)
-            }
-        }
-
-        // 当滚动条位于顶部（scrollY == 0）时，展开 FAB
-        val fabExtended by remember { derivedStateOf { scrollState.value == 0 } }
-        
-        ProfileFab(
-            extended = fabExtended,
-            userIsMe = userData.isMe(),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                // 偏移 FAB 以补偿 CoordinatorLayout 的折叠行为 (如果存在)
-                // 在纯 Compose 环境中可能不需要这个负偏移
-                .offset(y = ((-100).dp)),
-            onFabClicked = { functionalityNotAvailablePopupShown = true },
-        )
-    }
-}
-
-/**
- * 用户信息字段列表。
- *
- * @param userData 用户数据。
- * @param containerHeight 容器总高度，用于计算底部留白。
- */
-@Composable
-private fun UserInfoFields(userData: ProfileScreenState, containerHeight: Dp) {
-    Column {
-        Spacer(modifier = Modifier.height(8.dp))
-
-        NameAndPosition(userData)
-
-        ProfileProperty(stringResource(R.string.display_name), userData.displayName)
-
-        ProfileProperty(stringResource(R.string.status), userData.status)
-
-        ProfileProperty(stringResource(R.string.twitter), userData.twitter, isLink = true)
-
-        userData.timeZone?.let {
-            ProfileProperty(stringResource(R.string.timezone), userData.timeZone)
-        }
-
-        // 添加一个 Spacer，确保列表内容在不同设备上都能占据一定高度，
-        // 从而保证顶部内容（如头像）在滚动时有足够的空间被折叠。
-        // 这里硬编码保留 320dp 的内容区域。
-        Spacer(Modifier.height((containerHeight - 320.dp).coerceAtLeast(0.dp)))
-    }
-}
-
-/**
- * 姓名和职位组合组件。
- */
-@Composable
-private fun NameAndPosition(userData: ProfileScreenState) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-        Name(
-            userData,
-            modifier = Modifier.baselineHeight(32.dp),
-        )
-        Position(
-            userData,
-            modifier = Modifier
-                .padding(bottom = 20.dp)
-                .baselineHeight(24.dp),
-        )
-    }
-}
-
-@Composable
-private fun Name(userData: ProfileScreenState, modifier: Modifier = Modifier) {
-    Text(
-        text = userData.name,
-        modifier = modifier,
-        style = MaterialTheme.typography.headlineSmall,
-    )
-}
-
-@Composable
-private fun Position(userData: ProfileScreenState, modifier: Modifier = Modifier) {
-    Text(
-        text = userData.position,
-        modifier = modifier,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-/**
- * 个人资料头部（头像）。
- *
- * 头像会随着滚动产生视差效果（虽然这里的实现比较简单，主要是计算 padding）。
- */
-@Composable
-private fun ProfileHeader(scrollState: ScrollState, data: ProfileScreenState, containerHeight: Dp) {
-    val offset = (scrollState.value / 2)
-    val offsetDp = with(LocalDensity.current) { offset.toDp() }
-
-    data.photo?.let {
-        Image(
-            modifier = Modifier
-                .heightIn(max = containerHeight / 2)
-                .fillMaxWidth()
-                // TODO: 更新为使用 offset 修饰符以避免重组 (recomposition)
-                .padding(
-                    start = 16.dp,
-                    top = offsetDp,
-                    end = 16.dp,
-                )
-                .clip(CircleShape),
-            painter = painterResource(id = it),
-            contentScale = ContentScale.Crop,
-            contentDescription = null,
-        )
-    }
-}
-
-/**
- * 单个属性行组件（标签 + 值）。
- */
-@Composable
-fun ProfileProperty(label: String, value: String, isLink: Boolean = false) {
-    Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-        Divider()
-        Text(
-            text = label,
-            modifier = Modifier.baselineHeight(24.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        val style = if (isLink) {
-            MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.primary)
-        } else {
-            MaterialTheme.typography.bodyLarge
-        }
-        Text(
-            text = value,
-            modifier = Modifier.baselineHeight(24.dp),
-            style = style,
-        )
-    }
-}
-
-@Composable
-fun ProfileError() {
-    Text(stringResource(R.string.profile_error))
-}
-
-/**
- * 个人资料页面的浮动操作按钮 (FAB)。
- *
- * 根据用户身份显示不同图标（编辑或发消息），并支持扩展动画。
- */
-@Composable
-fun ProfileFab(extended: Boolean, userIsMe: Boolean, modifier: Modifier = Modifier, onFabClicked: () -> Unit = { }) {
-    key(userIsMe) {
-        // 使用 key 防止在组合期间多次执行
-        FloatingActionButton(
-            onClick = onFabClicked,
-            modifier = modifier
-                .padding(16.dp)
-                .navigationBarsPadding()
-                .height(48.dp)
-                .widthIn(min = 48.dp),
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-        ) {
-            AnimatingFabContent(
-                icon = {
-                    Icon(
-                        painter = painterResource(id = if (userIsMe) R.drawable.ic_create else R.drawable.ic_chat),
-                        contentDescription = stringResource(
-                            if (userIsMe) R.string.edit_profile else R.string.message,
-                        ),
-                    )
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Model & Key Settings") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
                 },
-                text = {
-                    Text(
-                        text = stringResource(
-                            id = if (userIsMe) R.string.edit_profile else R.string.message,
-                        ),
-                    )
-                },
-                extended = extended,
+                actions = {
+                    IconButton(onClick = {
+                        val newProvider = ProviderSetting.OpenAI(
+                            id = UUID.randomUUID().toString(),
+                            name = "New Provider",
+                            apiKey = "",
+                            baseUrl = "https://api.openai.com/v1"
+                        )
+                        onUpdateSettings(providerSettings + newProvider)
+                    }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Provider")
+                    }
+                }
             )
         }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(providerSettings, key = { it.id }) { provider ->
+                ProviderCard(
+                    provider = provider,
+                    activeProviderId = activeProviderId,
+                    activeModelId = activeModelId,
+                    onUpdate = { updated ->
+                        onUpdateSettings(providerSettings.map { if (it.id == provider.id) updated else it })
+                    },
+                    onDelete = {
+                        onUpdateSettings(providerSettings.filter { it.id != provider.id })
+                    },
+                    onSelectModel = { modelId ->
+                        onSelectModel(provider.id, modelId)
+                    }
+                )
+            }
+        }
     }
 }
 
-@Preview(widthDp = 640, heightDp = 360)
 @Composable
-fun ConvPreviewLandscapeMeDefault() {
-    JetchatTheme {
-        ProfileScreen(meProfile)
+fun ProviderCard(
+    provider: ProviderSetting,
+    activeProviderId: String?,
+    activeModelId: String?,
+    onUpdate: (ProviderSetting) -> Unit,
+    onDelete: () -> Unit,
+    onSelectModel: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    // Edit states
+    var name by remember(provider.name) { mutableStateOf(provider.name) }
+    var apiKey by remember(provider) { 
+        mutableStateOf(
+            when (provider) {
+                is ProviderSetting.OpenAI -> provider.apiKey
+                is ProviderSetting.Google -> provider.apiKey
+                is ProviderSetting.Claude -> provider.apiKey
+            }
+        ) 
     }
-}
-
-@Preview(widthDp = 360, heightDp = 480)
-@Composable
-fun ConvPreviewPortraitMeDefault() {
-    JetchatTheme {
-        ProfileScreen(meProfile)
+    var baseUrl by remember(provider) { 
+        mutableStateOf(
+            when (provider) {
+                is ProviderSetting.OpenAI -> provider.baseUrl
+                is ProviderSetting.Google -> provider.baseUrl
+                is ProviderSetting.Claude -> provider.baseUrl
+            }
+        )
     }
-}
 
-@Preview(widthDp = 360, heightDp = 480)
-@Composable
-fun ConvPreviewPortraitOtherDefault() {
-    JetchatTheme {
-        ProfileScreen(colleagueProfile)
-    }
-}
+    var isTesting by remember { mutableStateOf(false) }
 
-@Preview
-@Composable
-fun ProfileFabPreview() {
-    JetchatTheme {
-        ProfileFab(extended = true, userIsMe = false)
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = provider.name,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    if (provider.enabled) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Enabled",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.height(16.dp)
+                        )
+                    }
+                    // Show active model badge if applicable
+                    if (provider.id == activeProviderId) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                            Text("Active", color = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
+                }
+                Row {
+                    Switch(
+                        checked = provider.enabled,
+                        onCheckedChange = { enabled ->
+                            onUpdate(
+                                when (provider) {
+                                    is ProviderSetting.OpenAI -> provider.copy(enabled = enabled)
+                                    is ProviderSetting.Google -> provider.copy(enabled = enabled)
+                                    is ProviderSetting.Claude -> provider.copy(enabled = enabled)
+                                }
+                            )
+                        }
+                    )
+                    IconButton(onClick = { expanded = !expanded }) {
+                        Icon(
+                            if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = "Expand"
+                        )
+                    }
+                }
+            }
+            
+            // Always show models if expanded, or if it's the active provider (optional, maybe just stick to expanded)
+            // Let's just use expanded for details.
+
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(top = 16.dp)) {
+                    // Edit fields
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = apiKey,
+                        onValueChange = { apiKey = it },
+                        label = { Text("API Key") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = baseUrl,
+                        onValueChange = { baseUrl = it },
+                        label = { Text("Base URL") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Actions
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (!provider.builtIn) {
+                            IconButton(onClick = onDelete) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.width(48.dp))
+                        }
+
+                        Button(
+                            onClick = {
+                                isTesting = true
+                                scope.launch {
+                                    try {
+                                        val tempSetting = when (provider) {
+                                            is ProviderSetting.OpenAI -> provider.copy(apiKey = apiKey, baseUrl = baseUrl)
+                                            else -> provider
+                                        }
+
+                                        if (tempSetting is ProviderSetting.OpenAI) {
+                                            val client = OkHttpClient()
+                                            val openAIProvider = OpenAIProvider(client)
+                                            val models = openAIProvider.listModels(tempSetting)
+                                            
+                                            onUpdate(tempSetting.copy(name = name, models = models))
+                                            Toast.makeText(context, "Connected! Found ${models.size} models.", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                             Toast.makeText(context, "Test not supported for this type yet.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        Toast.makeText(context, "Connection Failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                    } finally {
+                                        isTesting = false
+                                    }
+                                }
+                            },
+                            enabled = !isTesting
+                        ) {
+                            if (isTesting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Testing...")
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Test & Save")
+                            }
+                        }
+                    }
+                    
+                    // Models List with Selection
+                    if (provider.models.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Available Models:", style = MaterialTheme.typography.titleSmall)
+                        Column(modifier = Modifier.padding(top = 8.dp)) {
+                            provider.models.forEach { model ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSelectModel(model.modelId) }
+                                        .padding(vertical = 4.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = (provider.id == activeProviderId && model.modelId == activeModelId),
+                                        onClick = { onSelectModel(model.modelId) }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(text = model.displayName, style = MaterialTheme.typography.bodyMedium)
+                                        Text(text = model.modelId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

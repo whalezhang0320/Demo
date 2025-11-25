@@ -16,6 +16,10 @@
 
 package com.example.star.aiwork.ui.conversation
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.expandHorizontally
@@ -23,6 +27,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,13 +39,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.InsertEmoticon
 import androidx.compose.material.icons.filled.InsertPhoto
 import androidx.compose.material.icons.outlined.Mood
@@ -64,11 +73,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsPropertyKey
@@ -83,6 +94,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.star.aiwork.R
 import com.example.star.aiwork.ui.FunctionalityNotAvailablePopup
 import com.example.star.aiwork.ui.components.BackPressHandler
@@ -130,6 +142,8 @@ fun UserInputPreview() {
  * @param isRecording 是否正在录音。
  * @param textFieldValue 当前文本框的值（Hoisted State）。
  * @param onTextChanged 文本变更回调。
+ * @param selectedImageUri 当前选中的图片 URI。
+ * @param onImageSelected 图片选中回调。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -141,7 +155,9 @@ fun UserInput(
     onStopRecording: () -> Unit = {},
     isRecording: Boolean = false,
     textFieldValue: TextFieldValue = TextFieldValue(),
-    onTextChanged: (TextFieldValue) -> Unit = {}
+    onTextChanged: (TextFieldValue) -> Unit = {},
+    selectedImageUri: Uri? = null,
+    onImageSelected: (Uri?) -> Unit = {}
 ) {
     // 当前选中的辅助输入面板（表情、图片等）
     var currentInputSelector by rememberSaveable { mutableStateOf(InputSelector.NONE) }
@@ -156,7 +172,45 @@ fun UserInput(
     // 用于键盘控制
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    // 图片选择器
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        onImageSelected(uri)
+        // 选中图片后关闭选择器面板（如果之前是通过面板打开的，虽然这里直接使用系统选择器）
+        currentInputSelector = InputSelector.NONE
+    }
+
     Column(modifier = modifier) {
+        // 图片预览区域
+        if (selectedImageUri != null) {
+            Box(modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)) {
+                AsyncImage(
+                    model = selectedImageUri,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                IconButton(
+                    onClick = { onImageSelected(null) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(24.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove image",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
         Divider()
         UserInputText(
             textFieldValue = textFieldValue,
@@ -190,13 +244,10 @@ fun UserInput(
                 }
             },
             onImageClicked = {
-                if (currentInputSelector == InputSelector.PICTURE) {
-                    currentInputSelector = InputSelector.NONE
-                    keyboardController?.show()
-                } else {
-                    currentInputSelector = InputSelector.PICTURE
-                    keyboardController?.hide()
-                }
+                // 直接打开系统图片选择器
+                imagePickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
             }
         )
 
@@ -245,7 +296,7 @@ private fun SelectorExpanded(
         when (currentSelector) {
             InputSelector.EMOJI -> EmojiSelector(onTextAdded, focusRequester)
             InputSelector.DM -> NotAvailablePopup(onCloseRequested)
-            InputSelector.PICTURE -> FunctionalityNotAvailablePanel()
+            InputSelector.PICTURE -> FunctionalityNotAvailablePanel() // 图片现在直接通过 UserInputText 处理，这里保留作为备用
             InputSelector.MAP -> FunctionalityNotAvailablePanel()
             InputSelector.PHONE -> FunctionalityNotAvailablePanel()
             else -> { throw NotImplementedError() }

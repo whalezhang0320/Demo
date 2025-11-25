@@ -58,8 +58,8 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -106,19 +106,20 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.example.star.aiwork.ui.FunctionalityNotAvailablePopup
+import coil.compose.AsyncImage
 import com.example.star.aiwork.R
+import com.example.star.aiwork.data.exampleUiState
+import com.example.star.aiwork.data.provider.OpenAIProvider
+import com.example.star.aiwork.domain.TextGenerationParams
 import com.example.star.aiwork.domain.model.MessageRole
 import com.example.star.aiwork.domain.model.ProviderSetting
-import com.example.star.aiwork.domain.TextGenerationParams
-import com.example.star.aiwork.data.provider.OpenAIProvider
+import com.example.star.aiwork.infra.util.AIRequestInterceptor
+import com.example.star.aiwork.infra.util.toBase64
+import com.example.star.aiwork.ui.FunctionalityNotAvailablePopup
 import com.example.star.aiwork.ui.ai.UIMessage
 import com.example.star.aiwork.ui.ai.UIMessagePart
-import com.example.star.aiwork.infra.util.AIRequestInterceptor
 import com.example.star.aiwork.ui.components.JetchatAppBar
-import com.example.star.aiwork.data.exampleUiState
 import com.example.star.aiwork.ui.theme.JetchatTheme
-import com.example.star.aiwork.ui.conversation.messageFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -139,6 +140,8 @@ import kotlin.math.roundToInt
  * @param modifier 应用于此布局节点的 [Modifier]。
  * @param onNavIconPressed 当按下导航图标（汉堡菜单）时的回调。
  * @param providerSettings 可用的 AI 提供商设置列表。
+ * @param activeProviderId 当前选中的提供商 ID。
+ * @param activeModelId 当前选中的模型 ID。
  * @param temperature 当前的 AI 文本生成温度设置 (0.0 - 2.0)。
  * @param maxTokens 生成的最大 Token 数。
  * @param streamResponse 是否流式传输 AI 响应或等待完整响应。
@@ -152,6 +155,8 @@ fun ConversationContent(
     modifier: Modifier = Modifier,
     onNavIconPressed: () -> Unit = { },
     providerSettings: List<ProviderSetting> = emptyList(),
+    activeProviderId: String? = null,
+    activeModelId: String? = null,
     temperature: Float = 0.7f,
     maxTokens: Int = 2000,
     streamResponse: Boolean = true,
@@ -248,10 +253,13 @@ fun ConversationContent(
     }
     val provider = remember { OpenAIProvider(client) }
     
-    // 选择第一个可用的提供商和模型进行演示
-    // 在实际应用中，这应该由用户选择
-    val providerSetting = remember(providerSettings) { providerSettings.firstOrNull() }
-    val model = remember(providerSetting) { providerSetting?.models?.firstOrNull() }
+    // 根据 ID 选择当前的 Provider 和 Model
+    val providerSetting = remember(providerSettings, activeProviderId) { 
+        providerSettings.find { it.id == activeProviderId } ?: providerSettings.firstOrNull() 
+    }
+    val model = remember(providerSetting, activeModelId) { 
+        providerSetting?.models?.find { it.modelId == activeModelId } ?: providerSetting?.models?.firstOrNull() 
+    }
 
     // 初始化用于语音转文本的音频录制器和 WebSocket
     val audioRecorder = remember { AudioRecorder(context) }
@@ -356,6 +364,8 @@ fun ConversationContent(
             
             // 用户输入区域
             UserInput(
+                selectedImageUri = uiState.selectedImageUri,
+                onImageSelected = { uri -> uiState.selectedImageUri = uri },
                 onMessageSent = { content ->
                     // 将发送逻辑封装为挂起函数，支持递归调用
                     suspend fun processMessage(
@@ -365,7 +375,17 @@ fun ConversationContent(
                     ) {
                          // 1. 如果是用户手动发送，立即显示消息；自动追问也显示在 UI 上
                         if (!isAutoTriggered) {
-                            uiState.addMessage(Message(authorMe, inputContent, timeNow))
+                            val currentImageUri = uiState.selectedImageUri
+                            uiState.addMessage(
+                                Message(
+                                    author = authorMe,
+                                    content = inputContent,
+                                    timestamp = timeNow,
+                                    imageUrl = currentImageUri?.toString()
+                                )
+                            )
+                            // 清空已选择的图片
+                            uiState.selectedImageUri = null
                         } else {
                             // 自动追问消息，可以显示不同的样式或前缀，这里简单处理
                             uiState.addMessage(Message(authorMe, "[Auto-Loop ${loopCount}] $inputContent", timeNow))
@@ -394,10 +414,22 @@ fun ConversationContent(
                                 
                                 // 收集上下文消息：最近的聊天历史
                                 val contextMessages = uiState.messages.asReversed().map { msg ->
-                                    UIMessage(
-                                        role = if (msg.author == authorMe) MessageRole.USER else MessageRole.ASSISTANT,
-                                        parts = listOf(UIMessagePart.Text(msg.content))
-                                    )
+                                    val role = if (msg.author == authorMe) MessageRole.USER else MessageRole.ASSISTANT
+                                    val parts = mutableListOf<UIMessagePart>()
+                                    
+                                    // 文本部分
+                                    if (msg.content.isNotEmpty()) {
+                                        parts.add(UIMessagePart.Text(msg.content))
+                                    }
+                                    
+                                    // 图片部分（如果有）
+                                    // 注意：历史消息中的图片可能需要从 URI 读取并转换为 Base64，或者如果是网络图片直接使用 URL
+                                    // 这里简化处理，仅当有 imageUrl 且是 content 协议（本地图片）时尝试读取
+                                    // 对于上下文中的历史图片，如果太大可能需要压缩或忽略，视 API 限制而定
+                                    // 简单起见，这里假设只发送当前消息的图片，历史消息的图片暂不回传给 API（或者你可以实现回传逻辑）
+                                    // 如果要支持多轮对话带图，需要在这里处理
+                                    
+                                    UIMessage(role = role, parts = parts)
                                 }.takeLast(10).toMutableList() 
                                 
                                 // **组装完整的消息列表 (Prompt Construction)**
@@ -433,9 +465,37 @@ fun ConversationContent(
                                 if (messagesToSend.isNotEmpty() && messagesToSend.last().role == MessageRole.USER) {
                                      messagesToSend.removeAt(messagesToSend.lastIndex)
                                 }
+                                
+                                // 构建当前消息 parts
+                                val currentParts = mutableListOf<UIMessagePart>()
+                                if (finalUserContent.isNotEmpty()) {
+                                    currentParts.add(UIMessagePart.Text(finalUserContent))
+                                }
+                                
+                                // 如果有图片（且不是自动循环），读取并转换为 Base64 添加到 parts
+                                if (!isAutoTriggered) {
+                                    // 查找最新一条用户消息（刚刚添加的）
+                                    val lastUserMsg = uiState.messages.firstOrNull { it.author == authorMe }
+                                    if (lastUserMsg?.imageUrl != null) {
+                                        try {
+                                            val imageUri = android.net.Uri.parse(lastUserMsg.imageUrl)
+                                            // 读取图片并转 Base64
+                                            val base64Image = context.contentResolver.openInputStream(imageUri)?.use { inputStream ->
+                                                inputStream.readBytes().toBase64()
+                                            }
+                                            if (base64Image != null) {
+                                                val mimeType = context.contentResolver.getType(imageUri) ?: "image/jpeg"
+                                                currentParts.add(UIMessagePart.Image(url = "data:$mimeType;base64,$base64Image"))
+                                            }
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                }
+                                
                                 messagesToSend.add(UIMessage(
                                     role = MessageRole.USER,
-                                    parts = listOf(UIMessagePart.Text(finalUserContent))
+                                    parts = currentParts
                                 ))
 
                                 // 添加初始空 AI 消息占位符
@@ -1049,15 +1109,30 @@ fun ChatItemBubble(message: Message, isUserMe: Boolean, authorClicked: (String) 
                 authorClicked = authorClicked,
             )
         }
-
-        message.image?.let {
+        
+        // 显示图片（如果存在）
+        // 优先使用 imageUrl (本地或网络URI), 其次是 image 资源ID
+        if (message.imageUrl != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Surface(
+                color = backgroundBubbleColor,
+                shape = ChatBubbleShape,
+            ) {
+                AsyncImage(
+                    model = message.imageUrl,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(160.dp),
+                    contentDescription = stringResource(id = R.string.attached_image),
+                )
+            }
+        } else if (message.image != null) {
             Spacer(modifier = Modifier.height(4.dp))
             Surface(
                 color = backgroundBubbleColor,
                 shape = ChatBubbleShape,
             ) {
                 Image(
-                    painter = painterResource(it),
+                    painter = painterResource(message.image),
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.size(160.dp),
                     contentDescription = stringResource(id = R.string.attached_image),

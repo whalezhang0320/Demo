@@ -39,6 +39,7 @@ import kotlinx.coroutines.launch
  * - 用户配置的 AI 提供商设置 [ProviderSetting]。
  * - 全局 AI 模型参数 (Temperature, Max Tokens, Stream Response)。
  * - 角色市场/Prompt预设
+ * - 当前激活的 Provider 和 Model
  *
  * @property userPreferencesRepository 用户偏好仓库，用于持久化数据的读写。
  * @property agentRepository 角色/Prompt仓库。
@@ -100,6 +101,26 @@ class MainViewModel(
              initialValue = emptyList()
         )
 
+    /**
+     * 当前激活的 Provider ID。
+     */
+    val activeProviderId: StateFlow<String?> = userPreferencesRepository.activeProviderId
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
+    /**
+     * 当前激活的 Model ID。
+     */
+    val activeModelId: StateFlow<String?> = userPreferencesRepository.activeModelId
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
     init {
         viewModelScope.launch {
             agentRepository.loadAgents()
@@ -154,6 +175,16 @@ class MainViewModel(
     fun updateStreamResponse(newStreamResponse: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.updateStreamResponse(newStreamResponse)
+        }
+    }
+    
+    /**
+     * 更新当前激活的模型。
+     */
+    fun updateActiveModel(providerId: String, modelId: String) {
+        viewModelScope.launch {
+            userPreferencesRepository.updateActiveProviderId(providerId)
+            userPreferencesRepository.updateActiveModelId(modelId)
         }
     }
     
