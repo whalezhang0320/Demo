@@ -19,14 +19,18 @@ package com.example.star.aiwork.ui.conversation
 import android.content.Context
 import android.net.Uri
 import com.example.star.aiwork.domain.TextGenerationParams
+import com.example.star.aiwork.domain.model.ChatDataItem
 import com.example.star.aiwork.domain.model.MessageRole
 import com.example.star.aiwork.domain.model.Model
 import com.example.star.aiwork.domain.model.ProviderSetting
-import com.example.star.aiwork.domain.Provider
+import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
+import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
+import com.example.star.aiwork.domain.usecase.SendMessageUseCase
 import com.example.star.aiwork.infra.util.toBase64
 import com.example.star.aiwork.ui.ai.UIMessage
 import com.example.star.aiwork.ui.ai.UIMessagePart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 
 /**
@@ -37,17 +41,19 @@ class ConversationLogic(
     private val uiState: ConversationUiState,
     private val context: Context,
     private val authorMe: String,
-    private val timeNow: String
+    private val timeNow: String,
+    private val sendMessageUseCase: SendMessageUseCase,
+    private val pauseStreamingUseCase: PauseStreamingUseCase,
+    private val rollbackMessageUseCase: RollbackMessageUseCase,
+    private val sessionId: String
 ) {
+
+    private var activeTaskId: String? = null
 
     suspend fun processMessage(
         inputContent: String,
-        provider: Provider<ProviderSetting>?,
         providerSetting: ProviderSetting?,
         model: Model?,
-        fallbackProvider: Provider<ProviderSetting>?,
-        fallbackProviderSetting: ProviderSetting?,
-        fallbackModel: Model?,
         isAutoTriggered: Boolean = false,
         loopCount: Int = 0,
         retrieveKnowledge: suspend (String) -> String = { "" }
@@ -71,7 +77,7 @@ class ConversationLogic(
         }
 
         // 2. 调用 LLM 获取响应
-        if (providerSetting != null && model != null && provider != null) {
+        if (providerSetting != null && model != null) {
             try {
                 // RAG Retrieval: 仅对非自动触发的消息尝试检索知识库
                 val knowledgeContext = if (!isAutoTriggered) {
@@ -198,66 +204,43 @@ class ConversationLogic(
                     Message("AI", "", timeNow)
                 )
 
-                // 动态转换 Provider 以匹配泛型要求 (使用 unchecked cast 或者通过 when 智能转换)
-                @Suppress("UNCHECKED_CAST")
-                val typedProvider = provider as Provider<ProviderSetting>
+                val historyChat = messagesToSend.dropLast(1).map { it.toChatDataItem() }
+                val userMessage = messagesToSend.last().toChatDataItem()
 
-                // 执行请求 (包含兜底逻辑)
-                val fullResponse = executeRequest(
-                    currentProvider = typedProvider,
-                    currentSetting = providerSetting,
-                    currentModel = model,
-                    currentMessages = messagesToSend,
-                    fallbackProvider = fallbackProvider,
-                    fallbackProviderSetting = fallbackProviderSetting,
-                    fallbackModel = fallbackModel
+                val sendResult = sendMessageUseCase(
+                    sessionId = sessionId,
+                    userMessage = userMessage,
+                    history = historyChat,
+                    providerSetting = providerSetting,
+                    params = TextGenerationParams(
+                        model = model,
+                        temperature = uiState.temperature,
+                        maxTokens = uiState.maxTokens
+                    )
                 )
 
-                // --- Auto-Loop Logic with Planner ---
-                if (uiState.isAutoLoopEnabled && loopCount < uiState.maxLoopCount && fullResponse.isNotBlank()) {
+                activeTaskId = sendResult.taskId
 
-                    // Step 2: 调用 Planner 模型生成下一步追问
-                    val plannerSystemPrompt = """
-                                        You are a task planner agent.
-                                        Analyze the previous AI response and generate a short, specific instruction for the next step to deepen the task or solve remaining issues.
-                                        If the task appears complete or no further meaningful steps are needed, reply with exactly "STOP".
-                                        Output ONLY the instruction or "STOP".
-                                    """.trimIndent()
-
-                    val plannerMessages = listOf(
-                        UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text(plannerSystemPrompt))),
-                        UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("Previous Response:\n$fullResponse")))
-                    )
-
-                    // 使用相同的 provider/model 进行规划
-                    val plannerResponse = typedProvider.generateText(
-                        providerSetting = providerSetting,
-                        messages = plannerMessages,
-                        params = TextGenerationParams(
-                            model = model,
-                            temperature = 0.3f,
-                            maxTokens = 100
-                        )
-                    )
-
-                    val nextInstruction = plannerResponse.choices.firstOrNull()?.message?.toText()?.trim() ?: "STOP"
-
-                    if (nextInstruction != "STOP" && nextInstruction.isNotEmpty()) {
-                        // 递归调用，使用 Planner 生成的指令
-                        processMessage(
-                            inputContent = nextInstruction,
-                            provider = provider,
-                            providerSetting = providerSetting,
-                            model = model,
-                            fallbackProvider = fallbackProvider,
-                            fallbackProviderSetting = fallbackProviderSetting,
-                            fallbackModel = fallbackModel,
-                            isAutoTriggered = true,
-                            loopCount = loopCount + 1,
-                            retrieveKnowledge = retrieveKnowledge
-                        )
+                var fullResponse = ""
+                sendResult.stream.collect { delta ->
+                    if (delta.isNotBlank()) {
+                        fullResponse += delta
+                        if (uiState.streamResponse) {
+                            withContext(Dispatchers.Main) {
+                                uiState.appendToLastMessage(delta)
+                            }
+                        }
                     }
                 }
+
+                if (!uiState.streamResponse && fullResponse.isNotBlank()) {
+                    withContext(Dispatchers.Main) {
+                        uiState.appendToLastMessage(fullResponse)
+                    }
+                }
+
+                // --- Auto-Loop Logic with Planner ---
+                // TODO: Planner 自动循环需基于新的 domain API 重新实现
 
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -274,79 +257,18 @@ class ConversationLogic(
         }
     }
 
-    private suspend fun executeRequest(
-        currentProvider: Provider<ProviderSetting>,
-        currentSetting: ProviderSetting,
-        currentModel: Model,
-        currentMessages: List<UIMessage>,
-        fallbackProvider: Provider<ProviderSetting>?,
-        fallbackProviderSetting: ProviderSetting?,
-        fallbackModel: Model?,
-        isFallback: Boolean = false
-    ): String {
-        var fullResponse = ""
-        try {
-            if (uiState.streamResponse) {
-                // 调用 streamText 进行流式响应
-                currentProvider.streamText(
-                    providerSetting = currentSetting,
-                    messages = currentMessages,
-                    params = TextGenerationParams(
-                        model = currentModel,
-                        temperature = uiState.temperature,
-                        maxTokens = uiState.maxTokens
-                    )
-                ).collect { chunk ->
-                    withContext(Dispatchers.Main) {
-                        val deltaContent = chunk.choices.firstOrNull()?.delta?.toText() ?: ""
-                        if (deltaContent.isNotEmpty()) {
-                            uiState.appendToLastMessage(deltaContent)
-                            fullResponse += deltaContent
-                        }
-                    }
-                }
-            } else {
-                // 调用 generateText 进行非流式响应
-                val response = currentProvider.generateText(
-                    providerSetting = currentSetting,
-                    messages = currentMessages,
-                    params = TextGenerationParams(
-                        model = currentModel,
-                        temperature = uiState.temperature,
-                        maxTokens = uiState.maxTokens
-                    )
-                )
-                val content = response.choices.firstOrNull()?.message?.toText() ?: ""
-                fullResponse = content
-                withContext(Dispatchers.Main) {
-                    if (content.isNotEmpty()) {
-                        uiState.appendToLastMessage(content)
-                    }
-                }
-            }
-            return fullResponse
-        } catch (e: Exception) {
-            e.printStackTrace()
-            if (!isFallback && fallbackProvider != null && fallbackProviderSetting != null && fallbackModel != null) {
-                withContext(Dispatchers.Main) {
-                    uiState.appendToLastMessage("\n\n[System: Primary model failed, switching to Ollama fallback...]\n\n")
-                }
-                // 递归调用自身，使用降级 Provider
-                @Suppress("UNCHECKED_CAST")
-                val typedFallbackProvider = fallbackProvider as Provider<ProviderSetting>
-                return executeRequest(
-                    currentProvider = typedFallbackProvider,
-                    currentSetting = fallbackProviderSetting,
-                    currentModel = fallbackModel,
-                    currentMessages = currentMessages,
-                    fallbackProvider = null, // Prevent infinite fallback recursion
-                    fallbackProviderSetting = null,
-                    fallbackModel = null,
-                    isFallback = true
-                )
-            } else {
-                throw e
+    private fun UIMessage.toChatDataItem(): ChatDataItem {
+        val builder = StringBuilder()
+        parts.forEach { part ->
+            when (part) {
+                is UIMessagePart.Text -> builder.append(part.text)
+                is UIMessagePart.Image -> builder.append("\n[image:${part.url}]")
+                else -> {}
             }
         }
+        return ChatDataItem(
+            role = this.role.name.lowercase(),
+            content = builder.toString()
+        )
     }
 }

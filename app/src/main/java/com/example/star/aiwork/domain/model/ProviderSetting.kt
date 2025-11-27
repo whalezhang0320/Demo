@@ -51,6 +51,7 @@ sealed class ProviderSetting {
     ): ProviderSetting
 
     interface OpenAICompatible {
+        val id: String
         val apiKey: String
         val baseUrl: String
         val chatCompletionsPath: String

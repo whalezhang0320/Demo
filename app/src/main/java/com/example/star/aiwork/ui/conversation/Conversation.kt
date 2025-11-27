@@ -67,14 +67,18 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.star.aiwork.R
 import com.example.star.aiwork.data.exampleUiState
-import com.example.star.aiwork.data.provider.ProviderFactory
-import com.example.star.aiwork.domain.Provider
+import com.example.star.aiwork.data.remote.StreamingChatRemoteDataSource
+import com.example.star.aiwork.data.repository.AiRepositoryImpl
 import com.example.star.aiwork.domain.model.ProviderSetting
-import com.example.star.aiwork.infra.util.AIRequestInterceptor
+import com.example.star.aiwork.domain.usecase.NoOpMessagePersistenceGateway
+import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
+import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
+import com.example.star.aiwork.domain.usecase.SendMessageUseCase
+import com.example.star.aiwork.infra.network.SseClient
 import com.example.star.aiwork.ui.theme.JetchatTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
+import java.util.UUID
 
 /**
  * 对话屏幕的入口点。
@@ -197,48 +201,50 @@ fun ConversationContent(
         }
     }
 
-    // 初始化带有 OkHttp 客户端的 OpenAI 提供商
-    val client = remember {
-        OkHttpClient.Builder()
-            .addInterceptor(AIRequestInterceptor())
-            .build()
-    }
-    
-    // 根据 ID 选择当前的 Provider 和 Model
+    // 根据 ID 选择当前的 ProviderSetting 和 Model
     val providerSetting = remember(providerSettings, activeProviderId) { 
         providerSettings.find { it.id == activeProviderId } ?: providerSettings.firstOrNull() 
     }
     val model = remember(providerSetting, activeModelId) { 
         providerSetting?.models?.find { it.modelId == activeModelId } ?: providerSetting?.models?.firstOrNull() 
     }
-    
-    // 使用 ProviderFactory 获取 provider 实例
-    val provider = remember(providerSetting) {
-        if (providerSetting != null) {
-            ProviderFactory.getProvider(providerSetting, client)
-        } else {
-            null
-        }
+
+    val sessionId = remember { UUID.randomUUID().toString() }
+    val sseClient = remember { SseClient() }
+    val remoteChatDataSource = remember { StreamingChatRemoteDataSource(sseClient) }
+    val aiRepository = remember { AiRepositoryImpl(remoteChatDataSource) }
+    val messagePersistenceGateway = remember { NoOpMessagePersistenceGateway }
+    val sendMessageUseCase = remember(aiRepository, messagePersistenceGateway, scope) {
+        SendMessageUseCase(aiRepository, messagePersistenceGateway, scope)
     }
-    
-    // 获取 Ollama 兜底 Provider
-    val fallbackProviderSetting = remember(providerSettings) {
-        providerSettings.find { it is ProviderSetting.Ollama && it.enabled }
+    val pauseStreamingUseCase = remember(aiRepository) {
+        PauseStreamingUseCase(aiRepository)
     }
-    val fallbackProvider = remember(fallbackProviderSetting) {
-        if (fallbackProviderSetting != null) {
-             ProviderFactory.getProvider(fallbackProviderSetting, client)
-        } else {
-            null
-        }
+    val rollbackMessageUseCase = remember(aiRepository) {
+        RollbackMessageUseCase(aiRepository, messagePersistenceGateway)
     }
-    val fallbackModel = remember(fallbackProviderSetting) {
-        fallbackProviderSetting?.models?.firstOrNull()
-    }
-    
+
     // Initialize Business Logic
-    val conversationLogic = remember(uiState, context, authorMe, timeNow) {
-        ConversationLogic(uiState, context, authorMe, timeNow)
+    val conversationLogic = remember(
+        uiState,
+        context,
+        authorMe,
+        timeNow,
+        sendMessageUseCase,
+        pauseStreamingUseCase,
+        rollbackMessageUseCase,
+        sessionId
+    ) {
+        ConversationLogic(
+            uiState = uiState,
+            context = context,
+            authorMe = authorMe,
+            timeNow = timeNow,
+            sendMessageUseCase = sendMessageUseCase,
+            pauseStreamingUseCase = pauseStreamingUseCase,
+            rollbackMessageUseCase = rollbackMessageUseCase,
+            sessionId = sessionId
+        )
     }
 
     // 初始化用于语音转文本的音频录制器和 WebSocket
@@ -346,19 +352,10 @@ fun ConversationContent(
                 onImageSelected = { uri -> uiState.selectedImageUri = uri },
                 onMessageSent = { content ->
                     scope.launch {
-                        @Suppress("UNCHECKED_CAST")
-                        val typedProvider = provider as? Provider<ProviderSetting>
-                        @Suppress("UNCHECKED_CAST")
-                        val typedFallbackProvider = fallbackProvider as? Provider<ProviderSetting>
-                        
                         conversationLogic.processMessage(
                             inputContent = content,
-                            provider = typedProvider,
                             providerSetting = providerSetting,
                             model = model,
-                            fallbackProvider = typedFallbackProvider,
-                            fallbackProviderSetting = fallbackProviderSetting,
-                            fallbackModel = fallbackModel,
                             retrieveKnowledge = retrieveKnowledge
                         )
                     }
