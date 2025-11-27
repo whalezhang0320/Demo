@@ -23,7 +23,9 @@ import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -59,6 +61,19 @@ class ConversationFragment : Fragment() {
                 val streamResponse by activityViewModel.streamResponse.collectAsStateWithLifecycle()
                 val activeProviderId by activityViewModel.activeProviderId.collectAsStateWithLifecycle()
                 val activeModelId by activityViewModel.activeModelId.collectAsStateWithLifecycle()
+                
+                val context = LocalContext.current
+                val scope = rememberCoroutineScope()
+
+                // 将当前的 Agent 同步到 UI State
+                // 这里简单取第一个或默认的，实际逻辑可能需要 ViewModel 支持选中的 Agent
+                // 假设 ViewModel 中有 selectedAgentId 或者 UI State 自己管理
+                // 这里我们暂时每次重新进入时刷新列表到 UI State，实际 app 可能需要更复杂的同步
+                // exampleUiState 是一个全局/单例对象 (For demo purpose in the original code),
+                // 我们这里简单地让它能够感知到 agents 变化
+                // 更好的做法是将 uiState 提升到 ViewModel。但为了保持现有架构改动最小：
+                // 我们不直接替换 uiState 的 agents，因为 ConversationUiState 主要是 UI 状态
+                // 我们将在 ConversationContent 内部处理 Agent 逻辑
 
                 JetchatTheme {
                     ConversationContent(
@@ -87,6 +102,9 @@ class ConversationFragment : Fragment() {
                             activityViewModel.updateTemperature(temp)
                             activityViewModel.updateMaxTokens(tokens)
                             activityViewModel.updateStreamResponse(stream)
+                        },
+                        retrieveKnowledge = { query ->
+                            activityViewModel.retrieveKnowledge(query)
                         }
                     )
                 }

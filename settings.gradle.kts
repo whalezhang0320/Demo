@@ -32,8 +32,9 @@ dependencyResolutionManagement {
 
         google()
         mavenCentral()
+        // PDFBox-Android is available on Maven Central, but some older versions or dependencies might be on JitPack
+        maven { url = uri("https://jitpack.io") }
     }
 }
 rootProject.name = "AiWork"
 include(":app")
-

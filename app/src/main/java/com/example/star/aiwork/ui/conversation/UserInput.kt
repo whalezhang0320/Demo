@@ -364,7 +364,7 @@ private fun UserInputText(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp, max = 200.dp), // 更改为 heightIn 以支持自动扩展
+            .heightIn(min = 30.dp, max = 200.dp), // 更改为 heightIn 以支持自动扩展
         horizontalArrangement = Arrangement.End
     ) {
         // 表情/键盘切换按钮

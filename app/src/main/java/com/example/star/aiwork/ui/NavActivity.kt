@@ -16,8 +16,11 @@
 
 package com.example.star.aiwork.ui
 
+import android.net.Uri
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -85,6 +88,15 @@ class NavActivity : AppCompatActivity() {
                     // 记录当前选中的菜单项
                     var selectedMenu by remember { mutableStateOf("composers") }
 
+                    // PDF 选择器
+                    val pdfLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.GetContent()
+                    ) { uri: Uri? ->
+                        if (uri != null) {
+                            viewModel.indexPdf(uri)
+                        }
+                    }
+
                     // 监听 ViewModel 中的打开菜单请求
                     if (drawerOpen) {
                         // 打开菜单并在 ViewModel 中重置状态
@@ -139,6 +151,12 @@ class NavActivity : AppCompatActivity() {
                             
                             // 关闭抽屉并导航回聊天
                             findNavController().popBackStack(R.id.nav_home, false)
+                            scope.launch {
+                                drawerState.close()
+                            }
+                        },
+                        onImportPdfClicked = {
+                            pdfLauncher.launch("application/pdf")
                             scope.launch {
                                 drawerState.close()
                             }

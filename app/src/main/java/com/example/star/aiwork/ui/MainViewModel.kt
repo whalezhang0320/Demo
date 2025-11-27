@@ -16,14 +16,19 @@
 
 package com.example.star.aiwork.ui
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
-import com.example.star.aiwork.domain.model.ProviderSetting
-import com.example.star.aiwork.data.UserPreferencesRepository
+import androidx.room.Room
 import com.example.star.aiwork.data.AgentRepository
+import com.example.star.aiwork.data.UserPreferencesRepository
+import com.example.star.aiwork.data.database.AppDatabase
+import com.example.star.aiwork.data.database.LocalRAGService
 import com.example.star.aiwork.domain.model.Agent
+import com.example.star.aiwork.domain.model.ProviderSetting
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,7 +51,8 @@ import kotlinx.coroutines.launch
  */
 class MainViewModel(
     private val userPreferencesRepository: UserPreferencesRepository,
-    private val agentRepository: AgentRepository
+    private val agentRepository: AgentRepository,
+    val ragService: LocalRAGService
 ) : ViewModel() {
 
     // 侧边栏状态流
@@ -206,6 +212,19 @@ class MainViewModel(
         }
     }
 
+    fun indexPdf(uri: Uri) {
+        viewModelScope.launch {
+             ragService.indexPdf(uri)
+        }
+    }
+    
+    /**
+     * 检索知识库中的相关上下文
+     */
+    suspend fun retrieveKnowledge(query: String): String {
+        return ragService.retrieve(query)
+    }
+
     /**
      * ViewModel 工厂，用于手动注入依赖项 (UserPreferencesRepository)。
      *
@@ -222,9 +241,18 @@ class MainViewModel(
                 // 从 extras 中获取 Application 对象
                 val application = checkNotNull(extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
                 
+                // 初始化数据库 (通常应该在 Application 中做单例，这里简化)
+                val db = Room.databaseBuilder(
+                    application,
+                    AppDatabase::class.java, "aiwork-database"
+                ).build()
+                
+                val ragService = LocalRAGService(application, db.knowledgeDao())
+
                 return MainViewModel(
                     UserPreferencesRepository(application),
-                    AgentRepository(application)
+                    AgentRepository(application),
+                    ragService
                 ) as T
             }
         }
