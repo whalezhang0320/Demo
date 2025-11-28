@@ -22,6 +22,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okhttp3.Headers
 import okhttp3.MediaType.Companion.toMediaType
@@ -78,7 +81,72 @@ class StreamingChatRemoteDataSource(
             history.forEach { msg ->
                 add(buildJsonObject {
                     put("role", msg.role.apiValue())
-                    put("content", msg.content)
+
+                    val textContent = msg.content
+                    val markerStart = "[image:data:image/"
+                    if (textContent.contains(markerStart)) {
+                        put("content", buildJsonArray {
+                            var currentIndex = 0
+
+                            while (currentIndex < textContent.length) {
+                                val startIndex = textContent.indexOf(markerStart, currentIndex)
+
+                                if (startIndex == -1) {
+                                    // 没有更多图片了，添加剩余文本
+                                    val remainingText = textContent.substring(currentIndex)
+                                    if (remainingText.isNotEmpty()) {
+                                        add(buildJsonObject {
+                                            put("type", "text")
+                                            put("text", remainingText)
+                                        })
+                                    }
+                                    break
+                                }
+
+                                // 添加图片前的文本
+                                if (startIndex > currentIndex) {
+                                    val textSegment = textContent.substring(currentIndex, startIndex)
+                                    if (textSegment.isNotEmpty()) {
+                                        add(buildJsonObject {
+                                            put("type", "text")
+                                            put("text", textSegment)
+                                        })
+                                    }
+                                }
+
+                                // 查找图片标签结束位置
+                                val endIndex = textContent.indexOf("]", startIndex)
+
+                                if (endIndex != -1) {
+                                    // 提取 URL，去掉前缀 "[image:" (长度为 7)
+                                    val imageUrl = textContent.substring(startIndex + 7, endIndex)
+                                    // 清理可能的空白字符
+                                    val cleanImageUrl = imageUrl.filter { !it.isWhitespace() }
+
+                                    add(buildJsonObject {
+                                        put("type", "image_url")
+                                        put("image_url", buildJsonObject {
+                                            put("url", cleanImageUrl)
+                                        })
+                                    })
+
+                                    currentIndex = endIndex + 1
+                                } else {
+                                    // 找不到结束括号，可能是格式错误，将剩余部分视为文本
+                                    val remainingText = textContent.substring(currentIndex)
+                                    if (remainingText.isNotEmpty()) {
+                                        add(buildJsonObject {
+                                            put("type", "text")
+                                            put("text", remainingText)
+                                        })
+                                    }
+                                    break
+                                }
+                            }
+                        })
+                    } else {
+                        put("content", textContent)
+                    }
                 })
             }
         }
@@ -118,10 +186,22 @@ class StreamingChatRemoteDataSource(
 
     private fun parseChunk(payload: String): String? {
         return runCatching {
-            val chunk = jsonParser.decodeFromString(OpenAIChunk.serializer(), payload)
-            val choice = chunk.choices.firstOrNull()
-            val delta = choice?.delta ?: choice?.message
-            delta?.content
+            val element = jsonParser.parseToJsonElement(payload).jsonObject
+
+            if (element.containsKey("choices")) {
+                val chunk = jsonParser.decodeFromJsonElement(OpenAIChunk.serializer(), element)
+                val choice = chunk.choices.firstOrNull()
+                val delta = choice?.delta ?: choice?.message
+                delta?.content
+            } else if (element.containsKey("message")) {
+                // Support Ollama /api/chat format
+                element["message"]?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
+            } else if (element.containsKey("response")) {
+                // Support Ollama /api/generate format
+                element["response"]?.jsonPrimitive?.contentOrNull
+            } else {
+                null
+            }
         }.getOrNull()
     }
 
@@ -148,6 +228,11 @@ class StreamingChatRemoteDataSource(
     private fun AiMessageRole.apiValue(): String = this.name.lowercase()
 
     private fun Throwable.toLlmError(): LlmError {
+        // 如果异常消息包含 "SiliconCloud fallback strategy invalidated"，直接透传
+        if (message?.contains("SiliconCloud fallback strategy invalidated") == true) {
+             return LlmError.UnknownError(message ?: "Fallback invalidated", this)
+        }
+        
         return when (this) {
             is LlmError -> this
             is NetworkException.TimeoutException -> LlmError.NetworkError("请求超时", this)
@@ -159,6 +244,10 @@ class StreamingChatRemoteDataSource(
     }
 
     private fun mapHttpError(exception: NetworkException.HttpException): LlmError {
+        // 某些情况下，服务端可能返回 400/422 等错误，但如果我们在拦截器里已经识别出这是因为需要兜底
+        // (例如拦截器其实无法直接拦截到这里，但如果服务端返回了特定错误码)
+        // 但目前我们的逻辑是拦截器拦截请求。
+        
         return when (exception.code) {
             401, 403 -> LlmError.AuthenticationError(cause = exception)
             408 -> LlmError.NetworkError("请求超时", exception)
@@ -175,4 +264,3 @@ class StreamingChatRemoteDataSource(
         private const val DONE_TOKEN = "[DONE]"
     }
 }
-

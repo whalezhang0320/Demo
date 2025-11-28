@@ -157,6 +157,7 @@ class ChatCompletionsAPI(
                     
                     if (hasNonTextParts) {
                         put("content", buildJsonArray {
+                            // 处理结构化的多模态消息
                             msg.parts.forEach { part ->
                                 when (part) {
                                     is UIMessagePart.Text -> add(buildJsonObject {
@@ -169,7 +170,6 @@ class ChatCompletionsAPI(
                                             put("url", part.url)
                                         })
                                     })
-                                    // 暂不处理其他类型，如需支持可在此扩展
                                     else -> {}
                                 }
                             }

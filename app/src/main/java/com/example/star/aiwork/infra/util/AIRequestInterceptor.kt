@@ -8,6 +8,7 @@ import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
 import okio.Buffer
+import java.io.IOException
 import java.nio.charset.Charset
 
 /**
@@ -24,7 +25,8 @@ class AIRequestInterceptor : Interceptor {
     
     // 后备 API Key，用于演示或免费模型
     // 注意：在生产环境中不应将敏感 Key 硬编码
-    private val fallbackApiKey = "sk-kvvjdrxnhqicbrjdbvbgwuyyvstssgmeqgufhuqwpjqvjuyg"
+    // 这个 Key 已经失效，现在用于检测是否使用了旧的策略
+    private val invalidatedFallbackApiKey = "sk-kvvjdrxnhqicbrjdbvbgwuyyvstssgmeqgufhuqwpjqvjuyg"
 
     override fun intercept(chain: Interceptor.Chain): Response {
         var request = chain.request()
@@ -49,10 +51,13 @@ class AIRequestInterceptor : Interceptor {
         val path = request.url.encodedPath
 
         // 如果没有设置 api token (或仅有 Bearer 前缀)，且路径匹配
-        // Checks if Auth header is missing, empty, or just "Bearer" / "Bearer sk-" (placeholder)
-        if ((authHeader.isNullOrBlank() || authHeader.trim() == "Bearer" || authHeader.trim() == "Bearer sk-") && 
-            path in listOf("/v1/chat/completions", "/v1/models")
-        ) {
+        // 或者使用了已经失效的 fallbackApiKey
+        val isAuthMissingOrInvalid = authHeader.isNullOrBlank() || 
+                                     authHeader.trim() == "Bearer" || 
+                                     authHeader.trim() == "Bearer sk-" ||
+                                     authHeader.contains(invalidatedFallbackApiKey)
+
+        if (isAuthMissingOrInvalid && path in listOf("/v1/chat/completions", "/v1/models")) {
             // 读取请求体以获取请求的模型名称
             val bodyJson = request.readBodyAsJson()
             val model = bodyJson?.jsonObject?.get("model")?.jsonPrimitive?.content
@@ -60,9 +65,8 @@ class AIRequestInterceptor : Interceptor {
             // 如果模型为空 (可能是列出模型列表的请求) 或者是已知的免费模型
             // 则使用 fallbackApiKey
             if (model.isNullOrEmpty() || model in freeModels) {
-                return request.newBuilder()
-                    .header("Authorization", "Bearer $fallbackApiKey")
-                    .build()
+                // 之前的兜底策略失效，现在抛出异常以便上层捕获并切换到 Ollama
+                throw IOException("SiliconCloud fallback strategy invalidated. Switching to local Ollama.")
             }
         }
 

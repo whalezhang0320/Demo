@@ -74,6 +74,16 @@ class ConversationUiState(
     }
 
     /**
+     * 移除列表顶部的一条消息。
+     * 用于在发送失败等场景下回滚 UI。
+     */
+    fun removeFirstMessage() {
+        if (_messages.isNotEmpty()) {
+            _messages.removeAt(0)
+        }
+    }
+
+    /**
      * 将内容追加到最新一条消息中。
      * 通常用于流式显示 AI 的回复。
      */

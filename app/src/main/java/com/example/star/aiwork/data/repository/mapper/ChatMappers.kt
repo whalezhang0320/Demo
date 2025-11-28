@@ -27,6 +27,9 @@ internal fun ProviderSetting.toModelConfig(
     taskId: String
 ): ModelConfig = when (this) {
     is ProviderSetting.OpenAICompatible -> toOpenAiModelConfig(params, taskId)
+    // 这里不再抛出异常，而是让 ProviderSetting.Ollama 通过 OpenAICompatible 处理
+    // 由于 ProviderSetting.Ollama 已经实现了 OpenAICompatible 接口，所以会被上面的分支捕获
+    // 如果有其他未实现 OpenAICompatible 的类型，需要单独处理或保留 error
     else -> error("Unsupported provider setting: ${this::class.simpleName}")
 }
 
@@ -74,4 +77,3 @@ private fun String?.toAiMessageRole(): AiMessageRole = when (this?.lowercase()) 
     "tool" -> AiMessageRole.TOOL
     else -> AiMessageRole.USER
 }
-

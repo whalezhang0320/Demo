@@ -233,7 +233,8 @@ fun ConversationContent(
         sendMessageUseCase,
         pauseStreamingUseCase,
         rollbackMessageUseCase,
-        sessionId
+        sessionId,
+        providerSettings
     ) {
         ConversationLogic(
             uiState = uiState,
@@ -243,7 +244,8 @@ fun ConversationContent(
             sendMessageUseCase = sendMessageUseCase,
             pauseStreamingUseCase = pauseStreamingUseCase,
             rollbackMessageUseCase = rollbackMessageUseCase,
-            sessionId = sessionId
+            sessionId = sessionId,
+            getProviderSettings = { providerSettings }
         )
     }
 

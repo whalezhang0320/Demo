@@ -148,7 +148,7 @@ sealed class ProviderSetting {
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
         override var apiKey: String = "ollama", // Ollama typically doesn't require a key, but some libs expect one
-        override var baseUrl: String = "http://localhost:11434",
+        override var baseUrl: String = "http://172.16.48.147:8080", // Android Emulator loopback address
         override var chatCompletionsPath: String = "/api/chat",
     ) : ProviderSetting(), OpenAICompatible {
         override fun addModel(model: Model): ProviderSetting {
