@@ -39,8 +39,9 @@ import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import com.example.star.aiwork.R
 import com.example.star.aiwork.databinding.ContentMainBinding
+import com.example.star.aiwork.domain.model.SessionEntity
 import com.example.star.aiwork.ui.components.JetchatDrawer
-import com.example.star.aiwork.ui.conversation.ConversationUiState
+import com.example.star.aiwork.ui.conversation.ChatViewModel
 import com.example.star.aiwork.data.exampleUiState
 import com.example.star.aiwork.ui.conversation.Message
 import kotlinx.coroutines.launch
@@ -57,8 +58,8 @@ import kotlinx.coroutines.launch
  * 这种结构展示了如何在一个应用中同时使用 Jetpack Compose 和传统的 View 系统。
  */
 class NavActivity : AppCompatActivity() {
-    // 懒加载 ViewModel，使用自定义 Factory
-    private val viewModel: MainViewModel by viewModels { MainViewModel.Factory }
+    private val mainViewModel: MainViewModel by viewModels { MainViewModel.Factory }
+    private val chatViewModel: ChatViewModel by viewModels { ChatViewModel.Factory }
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,12 +76,11 @@ class NavActivity : AppCompatActivity() {
                 setContent {
                     // 记住侧滑菜单的状态 (打开/关闭)
                     val drawerState = rememberDrawerState(initialValue = Closed)
-                    // 从 ViewModel 收集是否应该打开菜单的状态
-                    val drawerOpen by viewModel.drawerShouldBeOpened
-                        .collectAsStateWithLifecycle()
+                    val drawerOpen by mainViewModel.drawerShouldBeOpened.collectAsStateWithLifecycle()
 
-                    // 收集 Agents 列表
-                    val agents by viewModel.agents.collectAsStateWithLifecycle()
+                    val agents by mainViewModel.agents.collectAsStateWithLifecycle()
+                    val sessions by chatViewModel.sessions.collectAsStateWithLifecycle()
+                    val currentSession by chatViewModel.currentSession.collectAsStateWithLifecycle()
 
                     // 记录当前选中的菜单项
                     var selectedMenu by remember { mutableStateOf("composers") }
@@ -93,7 +93,7 @@ class NavActivity : AppCompatActivity() {
                             try {
                                 drawerState.open()
                             } finally {
-                                viewModel.resetOpenDrawerAction()
+                                mainViewModel.resetOpenDrawerAction()
                             }
                         }
                     }
@@ -104,24 +104,25 @@ class NavActivity : AppCompatActivity() {
                     // 使用 Compose 实现的侧滑菜单布局
                     JetchatDrawer(
                         drawerState = drawerState,
-                        selectedMenu = selectedMenu,
+                        selectedMenu = currentSession?.id ?: "",
                         agents = agents,
-                        onChatClicked = {
-                            // 导航回主页聊天界面
+                        sessions = sessions,
+                        onChatClicked = { sessionId ->
+                            val session = sessions.find { it.id == sessionId }
+                            if (session != null) {
+                                chatViewModel.selectSession(session)
+                            }
                             findNavController().popBackStack(R.id.nav_home, false)
                             scope.launch {
                                 drawerState.close()
                             }
-                            selectedMenu = it
                         },
-                        onProfileClicked = {
-                            // 导航到个人资料界面，并传递 userId
-                            val bundle = bundleOf("userId" to it)
+                        onProfileClicked = { userId ->
+                            val bundle = bundleOf("userId" to userId)
                             findNavController().navigate(R.id.nav_profile, bundle)
                             scope.launch {
                                 drawerState.close()
                             }
-                            selectedMenu = it
                         },
                         onAgentClicked = { agent ->
                             // 当点击 Agent 时，将其系统提示词作为系统消息添加到当前对话中
