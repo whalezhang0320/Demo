@@ -1,7 +1,9 @@
 package com.example.star.aiwork.ui.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -56,20 +58,35 @@ fun RenameSessionDialog(
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    if (newName.isNotBlank()) {
-                        onConfirm(newName.trim())
-                    }
-                },
-                enabled = newName.isNotBlank() && newName.trim() != currentName
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
             ) {
-                Text("确认")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    Text(
+                        text = "取消",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        if (newName.isNotBlank()) {
+                            onConfirm(newName.trim())
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    enabled = newName.isNotBlank() && newName.trim() != currentName
+                ) {
+                    Text("确认")
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.surface,

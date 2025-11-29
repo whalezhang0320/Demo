@@ -43,6 +43,7 @@ import androidx.navigation.fragment.NavHostFragment
 import com.example.star.aiwork.R
 import com.example.star.aiwork.databinding.ContentMainBinding
 import com.example.star.aiwork.domain.model.SessionEntity
+import com.example.star.aiwork.ui.components.DeleteSessionDialog
 import com.example.star.aiwork.ui.components.JetchatDrawer
 import com.example.star.aiwork.ui.components.RenameSessionDialog
 import com.example.star.aiwork.ui.conversation.ChatViewModel
@@ -91,6 +92,9 @@ class NavActivity : AppCompatActivity() {
                     
                     // 重命名对话框状态
                     var sessionToRename by remember { mutableStateOf<SessionEntity?>(null) }
+                    
+                    // 删除确认对话框状态
+                    var sessionToDelete by remember { mutableStateOf<SessionEntity?>(null) }
 
                     // PDF 选择器
                     val pdfLauncher = rememberLauncherForActivityResult(
@@ -211,8 +215,9 @@ class NavActivity : AppCompatActivity() {
                             }
                         },
                         onDeleteSession = { sessionId ->
-                            scope.launch {
-                                chatViewModel.deleteSession(sessionId)
+                            val session = sessions.find { it.id == sessionId }
+                            if (session != null) {
+                                sessionToDelete = session
                             }
                         }
                     ) {
@@ -230,6 +235,20 @@ class NavActivity : AppCompatActivity() {
                                     chatViewModel.renameSession(session.id, newName)
                                 }
                                 sessionToRename = null
+                            }
+                        )
+                    }
+                    
+                    // 删除确认对话框
+                    sessionToDelete?.let { session ->
+                        DeleteSessionDialog(
+                            sessionName = session.name,
+                            onDismiss = { sessionToDelete = null },
+                            onConfirm = {
+                                scope.launch {
+                                    chatViewModel.deleteSession(session.id)
+                                }
+                                sessionToDelete = null
                             }
                         )
                     }

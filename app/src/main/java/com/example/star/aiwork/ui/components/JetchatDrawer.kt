@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
@@ -159,7 +160,7 @@ fun JetchatDrawerContent(
         DrawerHeader()
         DividerItem()
         NewChatItem(onNewChatClicked = onNewChatClicked)
-        DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
+        DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
         DrawerItemHeader("Agents (Prompts)")
         agents.forEach { agent ->
             AgentItem(
@@ -169,7 +170,7 @@ fun JetchatDrawerContent(
             )
         }
 
-        DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
+        DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
         DrawerItemHeader("Knowledge Base")
         KnowledgeItem(
             "Import PDF",
@@ -178,7 +179,7 @@ fun JetchatDrawerContent(
             onImportPdfClicked()
         }
 
-        DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
+        DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
         DrawerItemHeader("Settings")
         SettingsItem(
             "Model Selection & API Settings",
@@ -187,28 +188,59 @@ fun JetchatDrawerContent(
             onProfileClicked(meProfile.userId)
         }
 
-        DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
-        DrawerItemHeader("Chats")
-        // 对会话进行排序：置顶的在前，然后按更新时间降序排序
-        val sortedSessions = remember(sessions) {
-            sessions
-                .filter { !it.archived } // 过滤掉已归档的会话
-                .sortedWith(
-                    compareByDescending<SessionEntity> { it.pinned } // 置顶的在前
-                        .thenByDescending { it.updatedAt } // 然后按更新时间降序
-                )
+        DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
+        // 将会话分为置顶和非置顶两部分
+        val (pinnedSessions, unpinnedSessions) = remember(sessions) {
+            val filteredSessions = sessions.filter { !it.archived }
+            val pinned = filteredSessions
+                .filter { it.pinned }
+                .sortedByDescending { it.updatedAt } // 置顶会话按更新时间降序排序
+            val unpinned = filteredSessions
+                .filter { !it.pinned }
+                .sortedByDescending { it.updatedAt } // 非置顶会话按更新时间降序排序
+            Pair(pinned, unpinned)
         }
-        sortedSessions.forEach { session ->
-            ChatItem(
-                text = session.name,
-                selected = selectedMenu == session.id,
-                pinned = session.pinned,
-                onChatClicked = { onChatClicked(session.id) },
-                onRename = { onRenameSession(session.id) },
-                onArchive = { onArchiveSession(session.id) },
-                onPin = { onPinSession(session.id) },
-                onDelete = { onDeleteSession(session.id) }
-            )
+        
+        // 显示置顶会话区域（在 Chats 区域上方）
+        if (pinnedSessions.isNotEmpty()) {
+            DrawerItemHeader("Pinned Chats")
+            pinnedSessions.forEach { session ->
+                ChatItem(
+                    text = session.name,
+                    selected = selectedMenu == session.id,
+                    pinned = session.pinned,
+                    onChatClicked = { onChatClicked(session.id) },
+                    onRename = { onRenameSession(session.id) },
+                    onArchive = { onArchiveSession(session.id) },
+                    onPin = { onPinSession(session.id) },
+                    onDelete = { onDeleteSession(session.id) }
+                )
+            }
+        }
+        
+        // 如果有置顶会话且也有非置顶会话，在它们之间添加一条横线（填满整个 drawer）
+        if (pinnedSessions.isNotEmpty() && unpinnedSessions.isNotEmpty()) {
+            DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
+        }
+        
+        // 显示非置顶会话区域
+        if (unpinnedSessions.isNotEmpty()) {
+            DrawerItemHeader("Chats")
+            unpinnedSessions.forEach { session ->
+                ChatItem(
+                    text = session.name,
+                    selected = selectedMenu == session.id,
+                    pinned = session.pinned,
+                    onChatClicked = { onChatClicked(session.id) },
+                    onRename = { onRenameSession(session.id) },
+                    onArchive = { onArchiveSession(session.id) },
+                    onPin = { onPinSession(session.id) },
+                    onDelete = { onDeleteSession(session.id) }
+                )
+            }
+        } else if (pinnedSessions.isEmpty()) {
+            // 如果没有任何会话，仍然显示 "Chats" 标题
+            DrawerItemHeader("Chats")
         }
     }
 }
@@ -241,7 +273,7 @@ private fun DrawerHeader() {
 private fun DrawerItemHeader(text: String) {
     Box(
         modifier = Modifier
-            .heightIn(min = 52.dp)
+            .heightIn(min = 32.dp)
             .padding(horizontal = 28.dp),
         contentAlignment = CenterStart,
     ) {
@@ -309,7 +341,7 @@ private fun ChatItem(
 ) {
     val background = when {
         selected -> Modifier.background(MaterialTheme.colorScheme.primaryContainer)
-        pinned -> Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+        //pinned -> Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
         else -> Modifier
     }
     Row(
@@ -317,7 +349,7 @@ private fun ChatItem(
             .height(56.dp)
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(12.dp))
             .then(background)
             .clickable(onClick = onChatClicked),
         verticalAlignment = CenterVertically,
@@ -326,7 +358,7 @@ private fun ChatItem(
             text,
             style = MaterialTheme.typography.bodyMedium,
             color = if (selected) {
-                MaterialTheme.colorScheme.primary
+                MaterialTheme.colorScheme.surfaceVariant
             } else {
                 MaterialTheme.colorScheme.onSurface
             },

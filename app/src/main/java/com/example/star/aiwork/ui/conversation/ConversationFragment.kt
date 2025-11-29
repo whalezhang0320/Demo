@@ -102,6 +102,15 @@ class ConversationFragment : Fragment() {
                         exampleUiState.addMessage(msg)
                     }
                 }
+                
+                // 根据当前会话更新标题
+                LaunchedEffect(currentSession?.name, currentSession?.id) {
+                    currentSession?.let { session ->
+                        exampleUiState.channelName = session.name.ifBlank { "新对话" }
+                    } ?: run {
+                        exampleUiState.channelName = "#composers"
+                    }
+                }
 
                 JetchatTheme {
                     ConversationContent(
