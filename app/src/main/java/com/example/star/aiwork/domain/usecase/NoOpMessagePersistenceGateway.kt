@@ -13,3 +13,4 @@ object NoOpMessagePersistenceGateway : MessagePersistenceGateway {
     override suspend fun removeLastAssistantMessage(sessionId: String) = Unit
 }
 
+

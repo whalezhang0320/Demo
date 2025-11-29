@@ -16,18 +16,13 @@
 
 package com.example.star.aiwork.ui.components
 
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
-import android.content.Context
-import android.os.Build
-import androidx.annotation.ChecksSdkIntAtLeast
-import androidx.annotation.DrawableRes
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -39,7 +34,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
@@ -47,6 +44,7 @@ import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -54,15 +52,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment.Companion.CenterStart
 import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.star.aiwork.R
@@ -71,7 +66,6 @@ import com.example.star.aiwork.data.meProfile
 import com.example.star.aiwork.domain.model.Agent
 import com.example.star.aiwork.domain.model.SessionEntity
 import com.example.star.aiwork.ui.theme.JetchatTheme
-import com.example.star.aiwork.ui.widget.WidgetReceiver
 
 /**
  * Jetchat 的模态导航抽屉 (Modal Navigation Drawer)。
@@ -88,6 +82,11 @@ fun JetchatDrawer(
     onProfileClicked: (String) -> Unit,
     onAgentClicked: (Agent) -> Unit = {},
     onImportPdfClicked: () -> Unit = {},
+    onNewChatClicked: () -> Unit = {},
+    onRenameSession: (String) -> Unit = {},
+    onArchiveSession: (String) -> Unit = {},
+    onPinSession: (String) -> Unit = {},
+    onDeleteSession: (String) -> Unit = {},
     agents: List<Agent> = emptyList(),
     sessions: List<SessionEntity> = emptyList(),
     selectedMenu: String = "",
@@ -103,6 +102,11 @@ fun JetchatDrawer(
                         onChatClicked = onChatClicked,
                         onAgentClicked = onAgentClicked,
                         onImportPdfClicked = onImportPdfClicked,
+                        onNewChatClicked = onNewChatClicked,
+                        onRenameSession = onRenameSession,
+                        onArchiveSession = onArchiveSession,
+                        onPinSession = onPinSession,
+                        onDeleteSession = onDeleteSession,
                         agents = agents,
                         sessions = sessions,
                         selectedMenu = selectedMenu
@@ -119,13 +123,15 @@ fun JetchatDrawer(
  *
  * 包含：
  * - 头部 Logo
- * - 聊天列表 (Chats)
- * - 最近联系人 (Recent Profiles)
+ * - New Chat 按钮
  * - 角色市场 (Agent Market)
- * - 设置选项 (如添加 Widget)
+ * - 知识库 (Knowledge Base)
+ * - 设置选项
+ * - 聊天列表 (Chats)
  *
  * @param onProfileClicked 当点击个人资料项时的回调。
  * @param onChatClicked 当点击聊天项时的回调。
+ * @param onNewChatClicked 当点击新建聊天时的回调。
  * @param selectedMenu 当前选中的菜单项 ID。
  */
 @Composable
@@ -134,24 +140,27 @@ fun JetchatDrawerContent(
     onChatClicked: (String) -> Unit, 
     onAgentClicked: (Agent) -> Unit,
     onImportPdfClicked: () -> Unit,
+    onNewChatClicked: () -> Unit,
+    onRenameSession: (String) -> Unit,
+    onArchiveSession: (String) -> Unit,
+    onPinSession: (String) -> Unit,
+    onDeleteSession: (String) -> Unit,
     agents: List<Agent>,
     sessions: List<SessionEntity>,
     selectedMenu: String
 ) {
     // 使用 windowInsetsTopHeight() 添加一个 Spacer，将抽屉内容向下推
     // 以避开状态栏 (Status Bar) 区域
-    Column {
+    // 使用 verticalScroll 使内容可滚动，确保所有会话都能访问
+    val scrollState = rememberScrollState()
+    Column(
+        modifier = Modifier.verticalScroll(scrollState)
+    ) {
         Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
         DrawerHeader()
         DividerItem()
-        DrawerItemHeader("Chats")
-
-        sessions.forEach { session ->
-            ChatItem(session.name, selectedMenu == session.id) {
-                onChatClicked(session.id)
-            }
-        }
-        DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
+        NewChatItem(onNewChatClicked = onNewChatClicked)
+        DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
         DrawerItemHeader("Agents (Prompts)")
         agents.forEach { agent ->
             AgentItem(
@@ -161,7 +170,7 @@ fun JetchatDrawerContent(
             )
         }
 
-        DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
+        DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
         DrawerItemHeader("Knowledge Base")
         KnowledgeItem(
             "Import PDF",
@@ -170,7 +179,7 @@ fun JetchatDrawerContent(
             onImportPdfClicked()
         }
 
-        DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
+        DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
         DrawerItemHeader("Settings")
         SettingsItem(
             "Model Selection & API Settings",
@@ -179,10 +188,59 @@ fun JetchatDrawerContent(
             onProfileClicked(meProfile.userId)
         }
 
-        if (widgetAddingIsSupported(LocalContext.current)) {
-            DividerItem(modifier = Modifier.padding(horizontal = 28.dp))
-            DrawerItemHeader("Widget")
-            WidgetDiscoverability()
+        DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
+        // 将会话分为置顶和非置顶两部分
+        val (pinnedSessions, unpinnedSessions) = remember(sessions) {
+            val filteredSessions = sessions.filter { !it.archived }
+            val pinned = filteredSessions
+                .filter { it.pinned }
+                .sortedByDescending { it.updatedAt } // 置顶会话按更新时间降序排序
+            val unpinned = filteredSessions
+                .filter { !it.pinned }
+                .sortedByDescending { it.updatedAt } // 非置顶会话按更新时间降序排序
+            Pair(pinned, unpinned)
+        }
+        
+        // 显示置顶会话区域（在 Chats 区域上方）
+        if (pinnedSessions.isNotEmpty()) {
+            DrawerItemHeader("Pinned Chats")
+            pinnedSessions.forEach { session ->
+                ChatItem(
+                    text = session.name,
+                    selected = selectedMenu == session.id,
+                    pinned = session.pinned,
+                    onChatClicked = { onChatClicked(session.id) },
+                    onRename = { onRenameSession(session.id) },
+                    onArchive = { onArchiveSession(session.id) },
+                    onPin = { onPinSession(session.id) },
+                    onDelete = { onDeleteSession(session.id) }
+                )
+            }
+        }
+        
+        // 如果有置顶会话且也有非置顶会话，在它们之间添加一条横线（填满整个 drawer）
+        if (pinnedSessions.isNotEmpty() && unpinnedSessions.isNotEmpty()) {
+            DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
+        }
+        
+        // 显示非置顶会话区域
+        if (unpinnedSessions.isNotEmpty()) {
+            DrawerItemHeader("Chats")
+            unpinnedSessions.forEach { session ->
+                ChatItem(
+                    text = session.name,
+                    selected = selectedMenu == session.id,
+                    pinned = session.pinned,
+                    onChatClicked = { onChatClicked(session.id) },
+                    onRename = { onRenameSession(session.id) },
+                    onArchive = { onArchiveSession(session.id) },
+                    onPin = { onPinSession(session.id) },
+                    onDelete = { onDeleteSession(session.id) }
+                )
+            }
+        } else if (pinnedSessions.isEmpty()) {
+            // 如果没有任何会话，仍然显示 "Chats" 标题
+            DrawerItemHeader("Chats")
         }
     }
 }
@@ -215,7 +273,7 @@ private fun DrawerHeader() {
 private fun DrawerItemHeader(text: String) {
     Box(
         modifier = Modifier
-            .heightIn(min = 52.dp)
+            .heightIn(min = 32.dp)
             .padding(horizontal = 28.dp),
         contentAlignment = CenterStart,
     ) {
@@ -228,49 +286,96 @@ private fun DrawerItemHeader(text: String) {
 }
 
 /**
- * 聊天列表项组件。
+ * 新建聊天项组件。
  *
- * @param text 聊天名称。
- * @param selected 是否被选中。
- * @param onChatClicked 点击回调。
+ * @param onNewChatClicked 点击回调。
  */
 @Composable
-private fun ChatItem(text: String, selected: Boolean, onChatClicked: () -> Unit) {
-    val background = if (selected) {
-        Modifier.background(MaterialTheme.colorScheme.primaryContainer)
-    } else {
-        Modifier
-    }
+private fun NewChatItem(onNewChatClicked: () -> Unit) {
     Row(
         modifier = Modifier
             .height(56.dp)
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
             .clip(CircleShape)
-            .then(background)
-            .clickable(onClick = onChatClicked),
+            .clickable(onClick = onNewChatClicked),
         verticalAlignment = CenterVertically,
     ) {
-        val iconTint = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        }
         Icon(
-            painter = painterResource(id = R.drawable.ic_jetchat),
-            tint = iconTint,
+            imageVector = Icons.Default.Add,
+            tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 16.dp),
             contentDescription = null,
         )
         Text(
+            "New Chat",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 12.dp),
+        )
+    }
+}
+
+/**
+ * 聊天列表项组件。
+ *
+ * @param text 聊天名称。
+ * @param selected 是否被选中。
+ * @param pinned 是否置顶。
+ * @param onChatClicked 点击回调。
+ * @param onRename 重命名回调。
+ * @param onArchive 归档回调。
+ * @param onPin 置顶回调。
+ * @param onDelete 删除回调。
+ */
+@Composable
+private fun ChatItem(
+    text: String,
+    selected: Boolean,
+    pinned: Boolean = false,
+    onChatClicked: () -> Unit,
+    onRename: () -> Unit,
+    onArchive: () -> Unit,
+    onPin: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val background = when {
+        selected -> Modifier.background(MaterialTheme.colorScheme.primaryContainer)
+        //pinned -> Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+        else -> Modifier
+    }
+    Row(
+        modifier = Modifier
+            .height(56.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .then(background)
+            .clickable(onClick = onChatClicked),
+        verticalAlignment = CenterVertically,
+    ) {
+        Text(
             text,
             style = MaterialTheme.typography.bodyMedium,
             color = if (selected) {
-                MaterialTheme.colorScheme.primary
+                MaterialTheme.colorScheme.surfaceVariant
             } else {
                 MaterialTheme.colorScheme.onSurface
             },
-            modifier = Modifier.padding(start = 12.dp),
+            modifier = Modifier
+                .padding(start = 16.dp)
+                .weight(1f),
+        )
+        
+        ChatItemMenu(
+            onMenuActionSelected = { action ->
+                when (action) {
+                    ChatItemMenuAction.RENAME -> onRename()
+                    ChatItemMenuAction.ARCHIVE -> onArchive()
+                    ChatItemMenuAction.PIN -> onPin()
+                    ChatItemMenuAction.DELETE -> onDelete()
+                }
+            }
         )
     }
 }
@@ -429,7 +534,20 @@ fun DrawerPreview() {
     JetchatTheme {
         Surface {
             Column {
-                JetchatDrawerContent({}, {}, {}, emptyList(),emptyList(),"")
+                JetchatDrawerContent(
+                    onProfileClicked = {},
+                    onChatClicked = {},
+                    onAgentClicked = {},
+                    onImportPdfClicked = {},
+                    onNewChatClicked = {},
+                    onRenameSession = {},
+                    onArchiveSession = {},
+                    onPinSession = {},
+                    onDeleteSession = {},
+                    agents = emptyList(),
+                    sessions = emptyList(),
+                    selectedMenu = ""
+                )
             }
         }
     }
@@ -444,57 +562,22 @@ fun DrawerPreviewDark() {
     JetchatTheme(isDarkTheme = true) {
         Surface {
             Column {
-                JetchatDrawerContent({}, {}, {}, emptyList(), emptyList(),"")
+                JetchatDrawerContent(
+                    onProfileClicked = {},
+                    onChatClicked = {},
+                    onAgentClicked = {},
+                    onImportPdfClicked = {},
+                    onNewChatClicked = {},
+                    onRenameSession = {},
+                    onArchiveSession = {},
+                    onPinSession = {},
+                    onDeleteSession = {},
+                    agents = emptyList(),
+                    sessions = emptyList(),
+                    selectedMenu = ""
+                )
             }
         }
     }
 }
 
-/**
- * Widget 添加选项组件。
- * 仅在支持将 Widget 固定到主屏幕的设备上显示 (Android O 及以上)。
- */
-@RequiresApi(Build.VERSION_CODES.O)
-@Composable
-private fun WidgetDiscoverability() {
-    val context = LocalContext.current
-    Row(
-        modifier = Modifier
-            .height(56.dp)
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp)
-            .clip(CircleShape)
-            .clickable(onClick = {
-                addWidgetToHomeScreen(context)
-            }),
-        verticalAlignment = CenterVertically,
-    ) {
-        Text(
-            stringResource(id = R.string.add_widget_to_home_page),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(start = 12.dp),
-        )
-    }
-}
-
-/**
- * 请求将 App Widget 添加到主屏幕。
- */
-@RequiresApi(Build.VERSION_CODES.O)
-private fun addWidgetToHomeScreen(context: Context) {
-    val appWidgetManager = AppWidgetManager.getInstance(context)
-    val myProvider = ComponentName(context, WidgetReceiver::class.java)
-    if (widgetAddingIsSupported(context)) {
-        appWidgetManager.requestPinAppWidget(myProvider, null, null)
-    }
-}
-
-/**
- * 检查是否支持将 Widget 固定到主屏幕。
- */
-@ChecksSdkIntAtLeast(api = Build.VERSION_CODES.O)
-private fun widgetAddingIsSupported(context: Context): Boolean {
-    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-        AppWidgetManager.getInstance(context).isRequestPinAppWidgetSupported
-}

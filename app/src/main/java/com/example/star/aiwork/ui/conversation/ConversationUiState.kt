@@ -38,10 +38,13 @@ import com.example.star.aiwork.domain.model.Agent
  * @property initialMessages 初始消息列表。
  */
 class ConversationUiState(
-    val channelName: String, 
+    channelName: String, 
     val channelMembers: Int, 
     initialMessages: List<Message>
 ) {
+    // 频道名称使用可变状态，以便根据当前会话动态更新
+    var channelName: String by mutableStateOf(channelName)
+    
     // 使用 SnapshotStateList 来存储消息，确保列表变更时能触发 Compose 重组
     private val _messages: MutableList<Message> = initialMessages.toMutableStateList()
     val messages: List<Message> = _messages

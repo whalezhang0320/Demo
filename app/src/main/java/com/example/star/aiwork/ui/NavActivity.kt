@@ -43,7 +43,9 @@ import androidx.navigation.fragment.NavHostFragment
 import com.example.star.aiwork.R
 import com.example.star.aiwork.databinding.ContentMainBinding
 import com.example.star.aiwork.domain.model.SessionEntity
+import com.example.star.aiwork.ui.components.DeleteSessionDialog
 import com.example.star.aiwork.ui.components.JetchatDrawer
+import com.example.star.aiwork.ui.components.RenameSessionDialog
 import com.example.star.aiwork.ui.conversation.ChatViewModel
 import com.example.star.aiwork.data.exampleUiState
 import com.example.star.aiwork.ui.conversation.Message
@@ -87,13 +89,19 @@ class NavActivity : AppCompatActivity() {
 
                     // 记录当前选中的菜单项
                     var selectedMenu by remember { mutableStateOf("composers") }
+                    
+                    // 重命名对话框状态
+                    var sessionToRename by remember { mutableStateOf<SessionEntity?>(null) }
+                    
+                    // 删除确认对话框状态
+                    var sessionToDelete by remember { mutableStateOf<SessionEntity?>(null) }
 
                     // PDF 选择器
                     val pdfLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.GetContent()
                     ) { uri: Uri? ->
                         if (uri != null) {
-                            viewModel.indexPdf(uri)
+                            //MainViewModel.indexPdf(uri)
                         }
                     }
 
@@ -103,6 +111,7 @@ class NavActivity : AppCompatActivity() {
                         LaunchedEffect(Unit) {
                             // 使用 try-finally 包装以处理打开菜单时的中断情况
                             try {
+                                // sessions Flow 会自动更新，因为 observeSessions() 观察数据库变化
                                 drawerState.open()
                             } finally {
                                 mainViewModel.resetOpenDrawerAction()
@@ -161,10 +170,87 @@ class NavActivity : AppCompatActivity() {
                             scope.launch {
                                 drawerState.close()
                             }
+                        },
+                        onNewChatClicked = {
+                            scope.launch {
+                                // 创建新会话，使用默认名称
+                                val sessionName = "New Chat"
+                                chatViewModel.createSession(sessionName)
+                                
+                                // createSession 是异步的，等待一下确保会话创建完成
+                                // 然后选择新会话以确保消息和草稿被正确初始化
+                                kotlinx.coroutines.delay(200)
+                                val newSession = chatViewModel.currentSession.value
+                                if (newSession != null) {
+                                    chatViewModel.selectSession(newSession)
+                                }
+                                
+                                // 导航到聊天页面
+                                findNavController().popBackStack(R.id.nav_home, false)
+                                
+                                // 关闭抽屉
+                                drawerState.close()
+                            }
+                        },
+                        onRenameSession = { sessionId ->
+                            val session = sessions.find { it.id == sessionId }
+                            if (session != null) {
+                                sessionToRename = session
+                            }
+                        },
+                        onArchiveSession = { sessionId ->
+                            scope.launch {
+                                val session = sessions.find { it.id == sessionId }
+                                if (session != null) {
+                                    chatViewModel.archiveSession(sessionId, !session.archived)
+                                }
+                            }
+                        },
+                        onPinSession = { sessionId ->
+                            scope.launch {
+                                val session = sessions.find { it.id == sessionId }
+                                if (session != null) {
+                                    chatViewModel.pinSession(sessionId, !session.pinned)
+                                }
+                            }
+                        },
+                        onDeleteSession = { sessionId ->
+                            val session = sessions.find { it.id == sessionId }
+                            if (session != null) {
+                                sessionToDelete = session
+                            }
                         }
                     ) {
                         // 侧滑菜单的主要内容区域：嵌入基于 XML 的 Fragment 导航
                         AndroidViewBinding(ContentMainBinding::inflate)
+                    }
+                    
+                    // 重命名对话框
+                    sessionToRename?.let { session ->
+                        RenameSessionDialog(
+                            currentName = session.name,
+                            onDismiss = { sessionToRename = null },
+                            onConfirm = { newName ->
+                                scope.launch {
+                                    chatViewModel.renameSession(session.id, newName)
+                                }
+                                sessionToRename = null
+                            }
+                        )
+                    }
+                    
+                    // 删除确认对话框
+                    sessionToDelete?.let { session ->
+                        DeleteSessionDialog(
+                            sessionName = session.name,
+                            onDismiss = { sessionToDelete = null },
+                            onConfirm = {
+                                scope.launch {
+                                    chatViewModel.deleteSession(session.id)
+                                }
+                                sessionToDelete = null
+                            }
+                        )
                     }
                 }
             },

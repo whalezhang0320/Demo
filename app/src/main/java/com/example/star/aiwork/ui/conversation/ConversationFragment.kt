@@ -27,6 +27,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.os.bundleOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,7 +36,12 @@ import androidx.navigation.findNavController
 import com.example.star.aiwork.ui.MainViewModel
 import com.example.star.aiwork.R
 import com.example.star.aiwork.data.exampleUiState
+import com.example.star.aiwork.domain.model.MessageEntity
+import com.example.star.aiwork.domain.model.MessageRole
 import com.example.star.aiwork.ui.theme.JetchatTheme
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 承载聊天界面的 Fragment。
@@ -46,8 +53,9 @@ import com.example.star.aiwork.ui.theme.JetchatTheme
  */
 class ConversationFragment : Fragment() {
 
-    // 获取 Activity 范围的 MainViewModel 实例，以共享数据
+    // 获取 Activity 范围的 ViewModel 实例，以共享数据
     private val activityViewModel: MainViewModel by activityViewModels()
+    private val chatViewModel: ChatViewModel by activityViewModels()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         ComposeView(inflater.context).apply {
@@ -65,15 +73,44 @@ class ConversationFragment : Fragment() {
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
 
-                // 将当前的 Agent 同步到 UI State
-                // 这里简单取第一个或默认的，实际逻辑可能需要 ViewModel 支持选中的 Agent
-                // 假设 ViewModel 中有 selectedAgentId 或者 UI State 自己管理
-                // 这里我们暂时每次重新进入时刷新列表到 UI State，实际 app 可能需要更复杂的同步
-                // exampleUiState 是一个全局/单例对象 (For demo purpose in the original code),
-                // 我们这里简单地让它能够感知到 agents 变化
-                // 更好的做法是将 uiState 提升到 ViewModel。但为了保持现有架构改动最小：
-                // 我们不直接替换 uiState 的 agents，因为 ConversationUiState 主要是 UI 状态
-                // 我们将在 ConversationContent 内部处理 Agent 逻辑
+                // 从 ChatViewModel 获取当前会话和消息
+                val currentSession by chatViewModel.currentSession.collectAsStateWithLifecycle()
+                val messagesFromDb by chatViewModel.messages.collectAsStateWithLifecycle()
+                
+                // 将 MessageEntity 转换为 Message
+                // 数据库查询是按 createdAt ASC（从旧到新）排序的：[A(旧), B, C(新)]
+                // 由于 LazyColumn 使用 reverseLayout = true，列表会反向显示：
+                //   - 列表第一个元素（索引0）显示在底部
+                //   - 列表最后一个元素显示在顶部
+                // 要让旧消息在顶部、新消息在底部，列表应该是：[C(新), B, A(旧)]
+                // addMessage 会将消息添加到列表顶部（索引0），所以我们需要按从旧到新的顺序添加
+                val convertedMessages = remember(messagesFromDb) {
+                    messagesFromDb.map { entity ->
+                        convertMessageEntityToMessage(entity)
+                    }
+                }
+                
+                // 同步消息到 UI State
+                LaunchedEffect(convertedMessages, currentSession?.id) {
+                    // 清空现有消息
+                    while (exampleUiState.messages.isNotEmpty()) {
+                        exampleUiState.removeFirstMessage()
+                    }
+                    // 按从旧到新的顺序添加消息（旧消息先添加，会在列表顶部）
+                    // 由于 reverseLayout = true，显示时旧消息会在顶部，新消息在底部
+                    convertedMessages.forEach { msg ->
+                        exampleUiState.addMessage(msg)
+                    }
+                }
+                
+                // 根据当前会话更新标题
+                LaunchedEffect(currentSession?.name, currentSession?.id) {
+                    currentSession?.let { session ->
+                        exampleUiState.channelName = session.name.ifBlank { "新对话" }
+                    } ?: run {
+                        exampleUiState.channelName = "#composers"
+                    }
+                }
 
                 JetchatTheme {
                     ConversationContent(
@@ -105,9 +142,37 @@ class ConversationFragment : Fragment() {
                         },
                         retrieveKnowledge = { query ->
                             activityViewModel.retrieveKnowledge(query)
-                        }
+                        },
+                        currentSessionId = currentSession?.id
                     )
-                }
             }
         }
+    }
+    
+    /**
+     * 将 MessageEntity 转换为 Message
+     */
+    private fun convertMessageEntityToMessage(entity: MessageEntity): Message {
+        val author = when (entity.role) {
+            MessageRole.USER -> "me"
+            MessageRole.ASSISTANT -> "assistant"
+            MessageRole.SYSTEM -> "system"
+            MessageRole.TOOL -> "tool"
+        }
+        
+        // 格式化时间戳
+        val timestamp = if (entity.createdAt > 0) {
+            val dateFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+            dateFormat.format(Date(entity.createdAt))
+        } else {
+            "Now"
+        }
+        
+        return Message(
+            author = author,
+            content = entity.content,
+            timestamp = timestamp,
+            imageUrl = entity.metadata.remoteUrl
+        )
+    }
 }

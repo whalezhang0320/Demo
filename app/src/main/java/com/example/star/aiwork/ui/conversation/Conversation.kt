@@ -70,7 +70,9 @@ import com.example.star.aiwork.data.exampleUiState
 import com.example.star.aiwork.data.remote.StreamingChatRemoteDataSource
 import com.example.star.aiwork.data.repository.AiRepositoryImpl
 import com.example.star.aiwork.domain.model.ProviderSetting
-import com.example.star.aiwork.domain.usecase.NoOpMessagePersistenceGateway
+import com.example.star.aiwork.data.repository.MessagePersistenceGatewayImpl
+import com.example.star.aiwork.data.repository.MessageRepositoryImpl
+import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
 import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
 import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
 import com.example.star.aiwork.domain.usecase.SendMessageUseCase
@@ -101,6 +103,7 @@ import java.util.UUID
  * @param streamResponse 是否流式传输 AI 响应或等待完整响应。
  * @param onUpdateSettings 更新模型设置（温度、最大 Token 数、流式响应）的回调。
  * @param retrieveKnowledge 检索知识库的回调函数。
+ * @param currentSessionId 当前会话 ID，用于消息持久化
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -116,7 +119,8 @@ fun ConversationContent(
     maxTokens: Int = 2000,
     streamResponse: Boolean = true,
     onUpdateSettings: (Float, Int, Boolean) -> Unit = { _, _, _ -> },
-    retrieveKnowledge: suspend (String) -> String = { "" }
+    retrieveKnowledge: suspend (String) -> String = { "" },
+    currentSessionId: String? = null
 ) {
     val authorMe = stringResource(R.string.author_me)
     val timeNow = stringResource(id = R.string.now)
@@ -209,11 +213,23 @@ fun ConversationContent(
         providerSetting?.models?.find { it.modelId == activeModelId } ?: providerSetting?.models?.firstOrNull() 
     }
 
-    val sessionId = remember { UUID.randomUUID().toString() }
+    // 使用当前会话 ID，如果没有则生成一个临时 ID（向后兼容）
+    val sessionId = remember(currentSessionId) {
+        currentSessionId ?: UUID.randomUUID().toString()
+    }
+    
     val sseClient = remember { SseClient() }
     val remoteChatDataSource = remember { StreamingChatRemoteDataSource(sseClient) }
     val aiRepository = remember { AiRepositoryImpl(remoteChatDataSource) }
-    val messagePersistenceGateway = remember { NoOpMessagePersistenceGateway }
+    
+    // 创建 MessageRepository 和 MessagePersistenceGateway
+    val messageRepository = remember(context) {
+        val messageLocalDataSource = MessageLocalDataSourceImpl(context)
+        MessageRepositoryImpl(messageLocalDataSource)
+    }
+    val messagePersistenceGateway = remember(messageRepository) {
+        MessagePersistenceGatewayImpl(messageRepository)
+    }
     val sendMessageUseCase = remember(aiRepository, messagePersistenceGateway, scope) {
         SendMessageUseCase(aiRepository, messagePersistenceGateway, scope)
     }
@@ -234,7 +250,8 @@ fun ConversationContent(
         pauseStreamingUseCase,
         rollbackMessageUseCase,
         sessionId,
-        providerSettings
+        providerSettings,
+        messagePersistenceGateway
     ) {
         ConversationLogic(
             uiState = uiState,
@@ -245,7 +262,8 @@ fun ConversationContent(
             pauseStreamingUseCase = pauseStreamingUseCase,
             rollbackMessageUseCase = rollbackMessageUseCase,
             sessionId = sessionId,
-            getProviderSettings = { providerSettings }
+            getProviderSettings = { providerSettings },
+            persistenceGateway = messagePersistenceGateway
         )
     }
 

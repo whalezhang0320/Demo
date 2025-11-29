@@ -23,6 +23,7 @@ import com.example.star.aiwork.domain.model.ChatDataItem
 import com.example.star.aiwork.domain.model.MessageRole
 import com.example.star.aiwork.domain.model.Model
 import com.example.star.aiwork.domain.model.ProviderSetting
+import com.example.star.aiwork.domain.usecase.MessagePersistenceGateway
 import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
 import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
 import com.example.star.aiwork.domain.usecase.SendMessageUseCase
@@ -46,7 +47,8 @@ class ConversationLogic(
     private val pauseStreamingUseCase: PauseStreamingUseCase,
     private val rollbackMessageUseCase: RollbackMessageUseCase,
     private val sessionId: String,
-    private val getProviderSettings: () -> List<ProviderSetting>
+    private val getProviderSettings: () -> List<ProviderSetting>,
+    private val persistenceGateway: MessagePersistenceGateway? = null
 ) {
 
     private var activeTaskId: String? = null
@@ -231,12 +233,28 @@ class ConversationLogic(
                 activeTaskId = sendResult.taskId
 
                 var fullResponse = ""
+                var lastUpdateTime = System.currentTimeMillis()
+                val UPDATE_INTERVAL_MS = 1000L // 每1秒更新一次数据库
+                
                 sendResult.stream.collect { delta ->
                     if (delta.isNotBlank()) {
                         fullResponse += delta
                         if (uiState.streamResponse) {
                             withContext(Dispatchers.Main) {
                                 uiState.appendToLastMessage(delta)
+                            }
+                            
+                            // 定期更新数据库中的助手消息（避免过于频繁的数据库操作）
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastUpdateTime >= UPDATE_INTERVAL_MS) {
+                                persistenceGateway?.replaceLastAssistantMessage(
+                                    sessionId,
+                                    ChatDataItem(
+                                        role = MessageRole.ASSISTANT.name.lowercase(),
+                                        content = fullResponse
+                                    )
+                                )
+                                lastUpdateTime = currentTime
                             }
                         }
                     }
@@ -246,6 +264,17 @@ class ConversationLogic(
                     withContext(Dispatchers.Main) {
                         uiState.appendToLastMessage(fullResponse)
                     }
+                }
+                
+                // 流式响应结束后，更新最终内容到数据库（标记为完成状态）
+                if (fullResponse.isNotBlank()) {
+                    persistenceGateway?.replaceLastAssistantMessage(
+                        sessionId,
+                        ChatDataItem(
+                            role = MessageRole.ASSISTANT.name.lowercase(),
+                            content = fullResponse
+                        )
+                    )
                 }
 
                 // --- Auto-Loop Logic with Planner ---

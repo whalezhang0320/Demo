@@ -27,11 +27,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.star.aiwork.conversation.ConversationContent
-import com.example.star.aiwork.conversation.ConversationTestTag
-import com.example.star.aiwork.conversation.ConversationUiState
+import com.example.star.aiwork.ui.conversation.ConversationContent
+import com.example.star.aiwork.ui.conversation.ConversationTestTag
+import com.example.star.aiwork.ui.conversation.ConversationUiState
 import com.example.star.aiwork.data.exampleUiState
-import com.example.star.aiwork.theme.JetchatTheme
+import com.example.star.aiwork.ui.theme.JetchatTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Before
 import org.junit.Rule

@@ -34,6 +34,7 @@ class ChatViewModel(
     private val renameSessionUseCase: RenameSessionUseCase,
     private val deleteSessionUseCase: DeleteSessionUseCase,
     private val pinSessionUseCase: PinSessionUseCase,
+    private val archiveSessionUseCase: ArchiveSessionUseCase,
     private val sendMessageUseCase: SendMessageUseCase,
     private val rollbackMessageUseCase: RollbackMessageUseCase,
     private val observeMessagesUseCase: ObserveMessagesUseCase,
@@ -92,6 +93,19 @@ class ChatViewModel(
         }
     }
 
+    fun renameSession(sessionId: String, newName: String) {
+        viewModelScope.launch {
+            renameSessionUseCase(sessionId, newName)
+            // 如果重命名的是当前会话，更新当前会话状态
+            val currentSession = _currentSession.value
+            if (currentSession?.id == sessionId) {
+                _currentSession.value = currentSession.copy(name = newName)
+            }
+            // 刷新会话列表
+            loadSessions()
+        }
+    }
+
     fun deleteCurrentSession() {
         viewModelScope.launch {
             val session = _currentSession.value ?: return@launch
@@ -102,9 +116,40 @@ class ChatViewModel(
         }
     }
 
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch {
+            deleteSessionUseCase(sessionId)
+            // 如果删除的是当前会话，清空当前会话状态
+            val currentSession = _currentSession.value
+            if (currentSession?.id == sessionId) {
+                _currentSession.value = null
+                _messages.value = emptyList()
+                _draft.value = null
+            }
+            // 刷新会话列表
+            loadSessions()
+        }
+    }
+
     fun pinSession(session: SessionEntity, pinned: Boolean) {
         viewModelScope.launch {
             pinSessionUseCase(session.id, pinned)
+        }
+    }
+
+    fun pinSession(sessionId: String, pinned: Boolean) {
+        viewModelScope.launch {
+            pinSessionUseCase(sessionId, pinned)
+            // 刷新会话列表
+            loadSessions()
+        }
+    }
+
+    fun archiveSession(sessionId: String, archived: Boolean) {
+        viewModelScope.launch {
+            archiveSessionUseCase(sessionId, archived)
+            // 刷新会话列表
+            loadSessions()
         }
     }
 
@@ -192,6 +237,7 @@ class ChatViewModel(
                 val renameSessionUseCase = RenameSessionUseCase(sessionRepository)
                 val deleteSessionUseCase = DeleteSessionUseCase(sessionRepository, messageRepository, draftRepository)
                 val pinSessionUseCase = PinSessionUseCase(sessionRepository)
+                val archiveSessionUseCase = ArchiveSessionUseCase(sessionRepository)
 
                 val sendMessageUseCase = SendMessageUseCase(messageRepository, sessionRepository)
                 val rollbackMessageUseCase = RollbackMessageUseCase(messageRepository)
@@ -206,6 +252,7 @@ class ChatViewModel(
                     renameSessionUseCase,
                     deleteSessionUseCase,
                     pinSessionUseCase,
+                    archiveSessionUseCase,
                     sendMessageUseCase,
                     rollbackMessageUseCase,
                     observeMessagesUseCase,
