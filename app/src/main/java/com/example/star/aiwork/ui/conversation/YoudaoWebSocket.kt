@@ -51,6 +51,7 @@ class YoudaoWebSocket {
                 "&signType=v4" +
                 "&format=wav" +
                 "&rate=16000" +
+                "&langType=zh-CHS" +
                 "&channel=1" +
                 "&version=v1" +
                 "&pointParam=yes"
@@ -82,22 +83,49 @@ class YoudaoWebSocket {
                         "started" -> {
                             Log.d(TAG, "▶️ Recognition STARTED")
                         }
-                        "result" -> {
-                            val segId = json.optInt("seg_id")
-                            val result = json.optString("result")
-                            val isFinal = json.optBoolean("isEnd", false)
+                        "recognition", "result" -> {
+                            // 尝试作为 JSON 数组解析 (新的 recognition 格式)
+                            val resultArray = json.optJSONArray("result")
 
-                            Log.d(TAG, "✅ ========== RECOGNITION RESULT ==========")
-                            Log.d(TAG, "✅ Segment ID: $segId")
-                            Log.d(TAG, "✅ Is Final: $isFinal")
-                            Log.d(TAG, "✅ Transcription: '$result'")
-                            Log.d(TAG, "✅ =========================================")
+                            if (resultArray != null && resultArray.length() > 0) {
+                                val item = resultArray.getJSONObject(0)
+                                val segId = item.optInt("seg_id")
+                                val st = item.optJSONObject("st")
+                                val sentence = st?.optString("sentence") ?: ""
+                                val type = st?.optInt("type")
+                                val isPartial = st?.optBoolean("partial") ?: false
 
-                            if (result.isNotEmpty()) {
-                                listener?.onTranscriptionReceived(result)
-                                Log.d(TAG, "📤 Sent result to listener")
+                                Log.d(TAG, "✅ ========== RECOGNITION RESULT ==========")
+                                Log.d(TAG, "✅ Action: $action")
+                                Log.d(TAG, "✅ Segment ID: $segId")
+                                Log.d(TAG, "✅ Type: $type, Partial: $isPartial")
+                                Log.d(TAG, "✅ Transcription: '$sentence'")
+                                Log.d(TAG, "✅ =========================================")
+
+                                if (sentence.isNotEmpty()) {
+                                    listener?.onTranscriptionReceived(sentence)
+                                    Log.d(TAG, "📤 Sent result to listener")
+                                }
                             } else {
-                                Log.w(TAG, "⚠️ Empty result received")
+                                // 兼容旧格式 (如果 result 是字符串)
+                                val result = json.optString("result")
+                                // 忽略如果是空数组的字符串表示 "[]"
+                                if (result.isNotEmpty() && result != "[]") {
+                                    val segId = json.optInt("seg_id")
+                                    val isFinal = json.optBoolean("isEnd", false)
+
+                                    Log.d(TAG, "✅ ========== RECOGNITION RESULT (Legacy) ==========")
+                                    Log.d(TAG, "✅ Action: $action")
+                                    Log.d(TAG, "✅ Segment ID: $segId")
+                                    Log.d(TAG, "✅ Is Final: $isFinal")
+                                    Log.d(TAG, "✅ Transcription: '$result'")
+                                    Log.d(TAG, "✅ =========================================")
+
+                                    listener?.onTranscriptionReceived(result)
+                                    Log.d(TAG, "📤 Sent result to listener")
+                                } else {
+                                     Log.w(TAG, "⚠️ Empty result received")
+                                }
                             }
                         }
                         "error" -> {
