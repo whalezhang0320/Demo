@@ -401,11 +401,42 @@ class ConversationLogic(
                     }
                     return@processMessage
                 }
+
+                // 兜底逻辑：遇到异常且当前不是 Ollama，尝试使用 Ollama 兜底
+                val isCurrentOllama = providerSetting is ProviderSetting.Ollama
+                if (!isCurrentOllama) {
+                    val ollamaProvider = getProviderSettings().find { it is ProviderSetting.Ollama }
+                    if (ollamaProvider != null && ollamaProvider.models.isNotEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            // 停止之前失败的消息加载动画
+                            uiState.updateLastMessageLoadingState(false)
+                            // 提示用户正在切换
+                            uiState.addMessage(
+                                Message("System", "Request failed (${e.message}). Fallback to local Ollama...", timeNow)
+                            )
+                        }
+
+                        // 递归调用，切换到 Ollama
+                        processMessage(
+                            inputContent = inputContent,
+                            providerSetting = ollamaProvider,
+                            model = ollamaProvider.models.first(),
+                            isAutoTriggered = isAutoTriggered,
+                            loopCount = loopCount,
+                            retrieveKnowledge = retrieveKnowledge,
+                            isRetry = true
+                        )
+                        return@processMessage
+                    }
+                }
+
                 withContext(Dispatchers.Main) {
                     uiState.addMessage(
                         Message("System", "Error: ${e.message}", timeNow)
                     )
                     uiState.isGenerating = false
+                    // 确保 AI 消息容器不是加载状态
+                    uiState.updateLastMessageLoadingState(false)
                 }
                 e.printStackTrace()
             }
