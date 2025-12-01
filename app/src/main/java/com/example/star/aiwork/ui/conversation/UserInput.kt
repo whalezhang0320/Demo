@@ -359,10 +359,9 @@ fun NotAvailablePopup(onDismissed: () -> Unit) {
  * 用户输入文本框和主要操作按钮区域。
  *
  * ====== 修改说明 ======
- * 1. 表情和图片按钮移入输入框内部左侧
- * 2. 语音/发送按钮共用同一位置（外部右侧）
- * 3. 无文本显示语音按钮，有文本切换为发送按钮
- * 4. 布局切换时不会引起明显抖动
+ * 1. 录音按钮移入输入框内部左侧（替换了表情按钮）
+ * 2. 外部右侧按钮仅作为发送/暂停键
+ * 3. 录音按钮与发送按钮不再重复/切换
  * =====================
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -414,15 +413,28 @@ private fun UserInputText(
                     .padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 表情按钮 - 在输入框内部左侧
-                IconButton(
-                    onClick = onEmojiClicked,
-                    modifier = Modifier.size(40.dp)
+                // 语音按钮 - 在输入框内部左侧 (替代表情按钮)
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    try {
+                                        onStartRecording()
+                                        awaitRelease()
+                                    } finally {
+                                        onStopRecording()
+                                    }
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (keyboardShown) Icons.Filled.InsertEmoticon else Icons.Outlined.Mood,
-                        contentDescription = stringResource(id = R.string.emoji_selector_desc),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        painter = painterResource(id = R.drawable.ic_mic),
+                        contentDescription = stringResource(R.string.record_audio),
+                        tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -487,7 +499,8 @@ private fun UserInputText(
             }
         }
 
-        // 语音/发送/暂停按钮切换 - 在输入框外部右侧，固定位置
+        // 发送/暂停按钮 - 在输入框外部右侧
+        // 录音按钮已移至左侧
         Box(
             modifier = Modifier
                 .padding(end = 16.dp, bottom = 8.dp)  // ✅ padding 在最外层
@@ -496,10 +509,9 @@ private fun UserInputText(
                     color = when {
                         isGenerating -> MaterialTheme.colorScheme.error  // 生成中：红色（暂停）
                         textFieldValue.text.isNotEmpty() -> MaterialTheme.colorScheme.primary  // 有文字：蓝色
-                        isRecording -> MaterialTheme.colorScheme.error  // 录音中：红色
-                        else -> MaterialTheme.colorScheme.primary  // 默认：蓝色
+                        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)  // 无文字：半透明蓝色（禁用）
                     },
-                    shape = RoundedCornerShape(10.dp)  // ✅ 圆角 10dp（不要太大）
+                    shape = RoundedCornerShape(10.dp)  // ✅ 圆角 10dp
                 )
                 .then(
                     when {
@@ -515,53 +527,30 @@ private fun UserInputText(
                             )
                         }
                         else -> {
-                            // 无文字时：按住录音
-                            Modifier.pointerInput(Unit) {
-                                detectTapGestures(
-                                    onPress = {
-                                        try {
-                                            onStartRecording()
-                                            awaitRelease()
-                                        } finally {
-                                            onStopRecording()
-                                        }
-                                    }
-                                )
-                            }
+                            // 无文字：不可点击
+                            Modifier
                         }
                     }
                 ),
             contentAlignment = Alignment.Center
         ) {
             // 图标切换
-            when {
-                isGenerating -> {
-                    // 暂停图标（方形）
-                    Icon(
-                        imageVector = Icons.Filled.Stop,
-                        contentDescription = "Pause stream",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)  // ✅ 图标 22dp
-                    )
-                }
-                textFieldValue.text.isNotEmpty() -> {
-                    // 发送图标
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.Send,
-                        contentDescription = stringResource(R.string.send),
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)  // ✅ 图标 22dp
-                    )
-                }
-                else -> {
-                    // 麦克风图标
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_mic),
-                        contentDescription = stringResource(R.string.record_audio),
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)  // ✅ 图标统一 22dp
-                    )
-                }
+            if (isGenerating) {
+                // 暂停图标（方形）
+                Icon(
+                    imageVector = Icons.Filled.Stop,
+                    contentDescription = "Pause stream",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)  // ✅ 图标 22dp
+                )
+            } else {
+                // 发送图标
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.Send,
+                    contentDescription = stringResource(R.string.send),
+                    tint = Color.White.copy(alpha = if (textFieldValue.text.isNotEmpty()) 1f else 0.5f),
+                    modifier = Modifier.size(22.dp)  // ✅ 图标 22dp
+                )
             }
         }
     }
