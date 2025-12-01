@@ -18,6 +18,7 @@ package com.example.star.aiwork
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -27,12 +28,23 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.star.aiwork.data.exampleUiState
+import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
+import com.example.star.aiwork.data.remote.StreamingChatRemoteDataSource
+import com.example.star.aiwork.data.repository.AiRepositoryImpl
+import com.example.star.aiwork.data.repository.MessagePersistenceGatewayImpl
+import com.example.star.aiwork.data.repository.MessageRepositoryImpl
+import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
+import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
+import com.example.star.aiwork.domain.usecase.SendMessageUseCase
+import com.example.star.aiwork.infra.network.SseClient
 import com.example.star.aiwork.ui.conversation.ConversationContent
+import com.example.star.aiwork.ui.conversation.ConversationLogic
 import com.example.star.aiwork.ui.conversation.ConversationTestTag
 import com.example.star.aiwork.ui.conversation.ConversationUiState
-import com.example.star.aiwork.data.exampleUiState
 import com.example.star.aiwork.ui.theme.JetchatTheme
 import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.compose.runtime.rememberCoroutineScope
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -51,9 +63,37 @@ class ConversationTest {
     fun setUp() {
         // Launch the conversation screen
         composeTestRule.setContent {
+            val scope = rememberCoroutineScope()
+            val context = LocalContext.current
+            val sseClient = SseClient()
+            val remoteDataSource = StreamingChatRemoteDataSource(sseClient)
+            val aiRepository = AiRepositoryImpl(remoteDataSource)
+            val messageLocalDataSource = MessageLocalDataSourceImpl(context)
+            val messageRepository = MessageRepositoryImpl(messageLocalDataSource)
+            val persistenceGateway = MessagePersistenceGatewayImpl(messageRepository)
+
+            val sendMessageUseCase = SendMessageUseCase(aiRepository, persistenceGateway, scope)
+            val pauseStreamingUseCase = PauseStreamingUseCase(aiRepository)
+            val rollbackMessageUseCase = RollbackMessageUseCase(aiRepository, persistenceGateway)
+
+            val previewLogic = ConversationLogic(
+                uiState = conversationTestUiState,
+                context = context,
+                authorMe = "me",
+                timeNow = "now",
+                sendMessageUseCase = sendMessageUseCase,
+                pauseStreamingUseCase = pauseStreamingUseCase,
+                rollbackMessageUseCase = rollbackMessageUseCase,
+                sessionId = "123",
+                getProviderSettings = { emptyList() },
+                persistenceGateway = persistenceGateway,
+                onRenameSession = { _, _ -> }
+            )
+
             JetchatTheme(isDarkTheme = themeIsDark.collectAsStateWithLifecycle(false).value) {
                 ConversationContent(
                     uiState = conversationTestUiState,
+                    logic = previewLogic,
                     navigateToProfile = { },
                     onNavIconPressed = { },
                 )

@@ -8,6 +8,7 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.InputStream
 
 class LocalRAGService(private val context: Context, private val dao: KnowledgeDao) {
@@ -22,44 +23,62 @@ class LocalRAGService(private val context: Context, private val dao: KnowledgeDa
 
     // 1. 解析 PDF 并切片
     suspend fun indexPdf(uri: Uri) = withContext(Dispatchers.IO) {
-        var inputStream: InputStream? = null
+        var tempFile: File? = null
         try {
-            inputStream = context.contentResolver.openInputStream(uri)
+            val inputStream = context.contentResolver.openInputStream(uri)
             if (inputStream == null) {
                 Log.e("LocalRAGService", "Cannot open input stream for URI: $uri")
                 return@withContext
             }
 
-            // 使用 PDFBox 加载
-            val document = PDDocument.load(inputStream)
-            val stripper = PDFTextStripper()
-            // 提取全文
-            val fullText = stripper.getText(document)
-            document.close()
-
-            if (fullText.isBlank()) {
-                Log.w("LocalRAGService", "PDF content is empty")
-                return@withContext
-            }
-
-            // 切片
-            val chunks = splitTextIntoChunks(fullText, chunkSize = 500)
+            // Create a temporary file
+            tempFile = File.createTempFile("pdf_import_", ".pdf", context.cacheDir)
             
-            // 存入数据库
-            val fileName = getFileName(uri)
-            val entities = chunks.map { 
-                KnowledgeChunk(sourceFilename = fileName, content = it) 
+            // Copy inputStream to tempFile
+            inputStream.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
             }
-            dao.insertChunks(entities)
-            Log.d("LocalRAGService", "Indexed ${entities.size} chunks from $fileName")
+
+            // 使用 PDFBox 加载
+            // PDDocument.load(File) is generally more robust than load(InputStream) on Android
+            val document = PDDocument.load(tempFile)
+            
+            try {
+                val stripper = PDFTextStripper()
+                stripper.sortByPosition = true // Ensure text is extracted in visual order
+                
+                // 提取全文
+                val fullText = stripper.getText(document)
+
+                if (fullText.isBlank()) {
+                    Log.w("LocalRAGService", "PDF content is empty")
+                    return@withContext
+                }
+
+                // 切片
+                val chunks = splitTextIntoChunks(fullText, chunkSize = 500)
+                
+                // 存入数据库
+                val fileName = getFileName(uri)
+                val entities = chunks.map { 
+                    KnowledgeChunk(sourceFilename = fileName, content = it) 
+                }
+                dao.insertChunks(entities)
+                Log.d("LocalRAGService", "Indexed ${entities.size} chunks from $fileName")
+            } finally {
+                document.close()
+            }
             
         } catch (e: Exception) {
             Log.e("LocalRAGService", "Error indexing PDF", e)
         } finally {
+            // Clean up temp file
             try {
-                inputStream?.close()
+                tempFile?.delete()
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.w("LocalRAGService", "Failed to delete temp file", e)
             }
         }
     }

@@ -17,6 +17,8 @@
 package com.example.star.aiwork
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
@@ -32,10 +34,20 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.espresso.Espresso
-import com.example.star.aiwork.conversation.ConversationContent
-import com.example.star.aiwork.conversation.KeyboardShownKey
 import com.example.star.aiwork.data.exampleUiState
-import com.example.star.aiwork.theme.JetchatTheme
+import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
+import com.example.star.aiwork.data.remote.StreamingChatRemoteDataSource
+import com.example.star.aiwork.data.repository.AiRepositoryImpl
+import com.example.star.aiwork.data.repository.MessagePersistenceGatewayImpl
+import com.example.star.aiwork.data.repository.MessageRepositoryImpl
+import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
+import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
+import com.example.star.aiwork.domain.usecase.SendMessageUseCase
+import com.example.star.aiwork.infra.network.SseClient
+import com.example.star.aiwork.ui.conversation.ConversationContent
+import com.example.star.aiwork.ui.conversation.ConversationLogic
+import com.example.star.aiwork.ui.conversation.KeyboardShownKey
+import com.example.star.aiwork.ui.theme.JetchatTheme
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Rule
@@ -55,9 +67,37 @@ class UserInputTest {
     fun setUp() {
         // Launch the conversation screen
         composeTestRule.setContent {
+            val scope = rememberCoroutineScope()
+            val context = LocalContext.current
+            val sseClient = SseClient()
+            val remoteDataSource = StreamingChatRemoteDataSource(sseClient)
+            val aiRepository = AiRepositoryImpl(remoteDataSource)
+            val messageLocalDataSource = MessageLocalDataSourceImpl(context)
+            val messageRepository = MessageRepositoryImpl(messageLocalDataSource)
+            val persistenceGateway = MessagePersistenceGatewayImpl(messageRepository)
+
+            val sendMessageUseCase = SendMessageUseCase(aiRepository, persistenceGateway, scope)
+            val pauseStreamingUseCase = PauseStreamingUseCase(aiRepository)
+            val rollbackMessageUseCase = RollbackMessageUseCase(aiRepository, persistenceGateway)
+
+            val previewLogic = ConversationLogic(
+                uiState = exampleUiState,
+                context = context,
+                authorMe = "me",
+                timeNow = "now",
+                sendMessageUseCase = sendMessageUseCase,
+                pauseStreamingUseCase = pauseStreamingUseCase,
+                rollbackMessageUseCase = rollbackMessageUseCase,
+                sessionId = "123",
+                getProviderSettings = { emptyList() },
+                persistenceGateway = persistenceGateway,
+                onRenameSession = { _, _ -> }
+            )
+
             JetchatTheme {
                 ConversationContent(
                     uiState = exampleUiState,
+                    logic = previewLogic, // ADDED
                     navigateToProfile = { },
                     onNavIconPressed = { },
                 )

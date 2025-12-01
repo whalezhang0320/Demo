@@ -101,7 +101,7 @@ class NavActivity : AppCompatActivity() {
                         contract = ActivityResultContracts.GetContent()
                     ) { uri: Uri? ->
                         if (uri != null) {
-                            //MainViewModel.indexPdf(uri)
+                            mainViewModel.indexPdf(uri)
                         }
                     }
 

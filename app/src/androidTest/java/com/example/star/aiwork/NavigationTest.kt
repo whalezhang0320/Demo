@@ -28,6 +28,7 @@ import androidx.compose.ui.test.performClick
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import androidx.test.espresso.Espresso
+import com.example.star.aiwork.ui.NavActivity
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -49,7 +50,7 @@ class NavigationTest {
     @Test
     fun profileScreen_back_conversationScreen() {
         val navController = getNavController()
-        // Navigate to profile        \
+        // Navigate to profile        
         navigateToProfile("Taylor Brooks")
         // Check profile is displayed
         assertEquals(navController.currentDestination?.id, R.id.nav_profile)
