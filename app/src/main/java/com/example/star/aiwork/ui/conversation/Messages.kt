@@ -81,6 +81,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.star.aiwork.R
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 
 const val ConversationTestTag = "ConversationTestTag"
 
@@ -308,12 +312,10 @@ fun ChatItemBubble(
     isUserMe: Boolean,
     authorClicked: (String) -> Unit
 ) {
-    val isSystemMessage = message.author == "System"
-
-    val backgroundBubbleColor = when {
-        isSystemMessage -> MaterialTheme.colorScheme.errorContainer // 淡红色背景
-        isUserMe -> MaterialTheme.colorScheme.primaryContainer // 淡蓝色背景
-        else -> MaterialTheme.colorScheme.surfaceContainer // 淡灰色背景
+    val backgroundBubbleColor = if (isUserMe) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
     }
 
     val clipboardManager = LocalClipboardManager.current
@@ -337,8 +339,8 @@ fun ChatItemBubble(
                     )
                 }
 
-                // 智能复制按钮 - 仅AI消息且为纯文本显示，排除错误消息
-                if (!isUserMe && message.author != "System" && isPureTextContent(message.content) && message.content.isNotEmpty()) {
+                // 智能复制按钮 - 仅AI消息且为纯文本显示
+                if (!isUserMe && isPureTextContent(message.content) && message.content.isNotEmpty()) {
                     IconButton(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(message.content))
@@ -405,7 +407,7 @@ fun MarkdownMessage(
     val isSystemMessage = message.author == "System"
 
     val textColor = when {
-        isSystemMessage -> Color.Gray // 灰色文字
+        isSystemMessage -> Color.Gray
         isUserMe -> MaterialTheme.colorScheme.onPrimary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -422,17 +424,48 @@ fun MarkdownMessage(
         MaterialTheme.colorScheme.onSurface
     }
 
-    Column(modifier = Modifier.padding(16.dp)) {
-        SimpleMarkdownRenderer(
-            markdown = message.content,
-            textColor = textColor,
-            codeBlockBackground = codeBlockBackground,
-            codeTextColor = codeTextColor,
-            onCodeBlockCopy = { code ->
-                clipboardManager.setText(AnnotatedString(code))
-                Toast.makeText(context, "代码已复制", Toast.LENGTH_SHORT).show()
+    if (isUserMe) {
+        var expanded by remember { mutableStateOf(false) }
+        var showExpandButton by remember { mutableStateOf(false) }
+
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = message.content,
+                color = textColor,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { textLayoutResult ->
+                    if (!expanded && textLayoutResult.hasVisualOverflow) {
+                        showExpandButton = true
+                    }
+                }
+            )
+
+            if (showExpandButton) {
+                Text(
+                    text = if (expanded) "折叠" else "展开",
+                    color = textColor.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .clickable { expanded = !expanded }
+                        .padding(top = 4.dp)
+                )
             }
-        )
+        }
+    } else {
+        Column(modifier = Modifier.padding(16.dp)) {
+            SimpleMarkdownRenderer(
+                markdown = message.content,
+                textColor = textColor,
+                codeBlockBackground = codeBlockBackground,
+                codeTextColor = codeTextColor,
+                onCodeBlockCopy = { code ->
+                    clipboardManager.setText(AnnotatedString(code))
+                    Toast.makeText(context, "代码已复制", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
     }
 }
 
