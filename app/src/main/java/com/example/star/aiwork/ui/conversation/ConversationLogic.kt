@@ -572,7 +572,7 @@ class ConversationLogic(
      * 实现更平滑的打字机效果。
      */
     private fun Flow<String>.asCharTypingStream(
-        charDelayMs: Long = 20L
+        charDelayMs: Long = 30L
     ): Flow<String> = flow {
         collect { chunk ->
             if (chunk.isEmpty()) return@collect
