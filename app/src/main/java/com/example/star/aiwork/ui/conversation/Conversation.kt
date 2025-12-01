@@ -38,45 +38,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.paddingFrom
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.ClickableText
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScaffoldDefaults
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draganddrop.DragAndDropEvent
-import androidx.compose.ui.draganddrop.DragAndDropTarget
-import androidx.compose.ui.draganddrop.mimeTypes
-import androidx.compose.ui.draganddrop.toAndroidDragEvent
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.LastBaseline
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -112,6 +73,21 @@ import kotlin.math.roundToInt
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.mimeTypes
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 
 
 import java.util.UUID
@@ -126,6 +102,7 @@ import java.util.UUID
  * - 处理设置对话框和导航。
  *
  * @param uiState [ConversationUiState] 包含要显示的消息和 UI 状态。
+ * @param logic [ConversationLogic] 包含处理消息的业务逻辑。
  * @param navigateToProfile 请求导航到用户个人资料时的回调。
  * @param modifier 应用于此布局节点的 [Modifier]。
  * @param onNavIconPressed 当按下导航图标（汉堡菜单）时的回调。
@@ -143,6 +120,7 @@ import java.util.UUID
 @Composable
 fun ConversationContent(
     uiState: ConversationUiState,
+    logic: ConversationLogic, // ADDED
     navigateToProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
     onNavIconPressed: () -> Unit = { },
@@ -247,59 +225,7 @@ fun ConversationContent(
         providerSetting?.models?.find { it.modelId == activeModelId } ?: providerSetting?.models?.firstOrNull()
     }
 
-    // 使用当前会话 ID，如果没有则生成一个临时 ID（向后兼容）
-    val sessionId = remember(currentSessionId) {
-        currentSessionId ?: UUID.randomUUID().toString()
-    }
-    
-    val sseClient = remember { SseClient() }
-    val remoteChatDataSource = remember { StreamingChatRemoteDataSource(sseClient) }
-    val aiRepository = remember { AiRepositoryImpl(remoteChatDataSource) }
-    
-    // 创建 MessageRepository 和 MessagePersistenceGateway
-    val messageRepository = remember(context) {
-        val messageLocalDataSource = MessageLocalDataSourceImpl(context)
-        MessageRepositoryImpl(messageLocalDataSource)
-    }
-    val messagePersistenceGateway = remember(messageRepository) {
-        MessagePersistenceGatewayImpl(messageRepository)
-    }
-    val sendMessageUseCase = remember(aiRepository, messagePersistenceGateway, scope) {
-        SendMessageUseCase(aiRepository, messagePersistenceGateway, scope)
-    }
-    val pauseStreamingUseCase = remember(aiRepository) {
-        PauseStreamingUseCase(aiRepository)
-    }
-    val rollbackMessageUseCase = remember(aiRepository) {
-        RollbackMessageUseCase(aiRepository, messagePersistenceGateway)
-    }
-
-    // Initialize Business Logic
-    val conversationLogic = remember(
-        uiState,
-        context,
-        authorMe,
-        timeNow,
-        sendMessageUseCase,
-        pauseStreamingUseCase,
-        rollbackMessageUseCase,
-        sessionId,
-        providerSettings,
-        messagePersistenceGateway
-    ) {
-        ConversationLogic(
-            uiState = uiState,
-            context = context,
-            authorMe = authorMe,
-            timeNow = timeNow,
-            sendMessageUseCase = sendMessageUseCase,
-            pauseStreamingUseCase = pauseStreamingUseCase,
-            rollbackMessageUseCase = rollbackMessageUseCase,
-            sessionId = sessionId,
-            getProviderSettings = { providerSettings },
-            persistenceGateway = messagePersistenceGateway
-        )
-    }
+    // REMOVED: No longer create ConversationLogic internally
 
     // 初始化用于语音转文本的音频录制器和 WebSocket
     val audioRecorder = remember { AudioRecorder(context) }
@@ -410,7 +336,7 @@ fun ConversationContent(
                     // ✅ 立即设置生成状态为 true，以便图标快速切换
                     uiState.isGenerating = true
                     scope.launch {
-                        conversationLogic.processMessage(
+                        logic.processMessage(
                             inputContent = content,
                             providerSetting = providerSetting,
                             model = model,
@@ -468,7 +394,7 @@ fun ConversationContent(
                 isGenerating = uiState.isGenerating,
                 onPauseStream = {
                     scope.launch {
-                        conversationLogic.cancelStreaming()
+                        logic.cancelStreaming()
                     }
                 },
                 textFieldValue = uiState.textFieldValue,
@@ -482,8 +408,38 @@ fun ConversationContent(
 @Composable
 fun ConversationPreview() {
     JetchatTheme {
+        // For preview purposes, we create dummy instances of the dependencies.
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        
+        val sseClient = SseClient()
+        val remoteDataSource = StreamingChatRemoteDataSource(sseClient)
+        val aiRepository = AiRepositoryImpl(remoteDataSource)
+        val messageLocalDataSource = MessageLocalDataSourceImpl(context)
+        val messageRepository = MessageRepositoryImpl(messageLocalDataSource)
+        val persistenceGateway = MessagePersistenceGatewayImpl(messageRepository)
+
+        val sendMessageUseCase = SendMessageUseCase(aiRepository, persistenceGateway, scope)
+        val pauseStreamingUseCase = PauseStreamingUseCase(aiRepository)
+        val rollbackMessageUseCase = RollbackMessageUseCase(aiRepository, persistenceGateway)
+
+        val previewLogic = ConversationLogic(
+            uiState = exampleUiState,
+            context = context,
+            authorMe = "me",
+            timeNow = "now",
+            sendMessageUseCase = sendMessageUseCase,
+            pauseStreamingUseCase = pauseStreamingUseCase,
+            rollbackMessageUseCase = rollbackMessageUseCase,
+            sessionId = "123",
+            getProviderSettings = { emptyList() },
+            persistenceGateway = persistenceGateway,
+            onRenameSession = { _, _ -> }
+        )
+
         ConversationContent(
             uiState = exampleUiState,
+            logic = previewLogic,
             navigateToProfile = { },
         )
     }

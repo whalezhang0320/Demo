@@ -42,6 +42,16 @@ import com.example.star.aiwork.ui.theme.JetchatTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.example.star.aiwork.data.remote.StreamingChatRemoteDataSource
+import com.example.star.aiwork.data.repository.AiRepositoryImpl
+import com.example.star.aiwork.data.repository.MessagePersistenceGatewayImpl
+import com.example.star.aiwork.data.repository.MessageRepositoryImpl
+import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
+import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
+import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
+import com.example.star.aiwork.domain.usecase.SendMessageUseCase
+import com.example.star.aiwork.infra.network.SseClient
+import java.util.UUID
 
 /**
  * 承载聊天界面的 Fragment。
@@ -77,13 +87,50 @@ class ConversationFragment : Fragment() {
                 val currentSession by chatViewModel.currentSession.collectAsStateWithLifecycle()
                 val messagesFromDb by chatViewModel.messages.collectAsStateWithLifecycle()
                 
+                val sseClient = remember { SseClient() }
+                val remoteChatDataSource = remember { StreamingChatRemoteDataSource(sseClient) }
+                val aiRepository = remember { AiRepositoryImpl(remoteChatDataSource) }
+                
+                // 创建 MessageRepository 和 MessagePersistenceGateway
+                val messageRepository = remember(context) {
+                    val messageLocalDataSource = MessageLocalDataSourceImpl(context)
+                    MessageRepositoryImpl(messageLocalDataSource)
+                }
+                val messagePersistenceGateway = remember(messageRepository) {
+                    MessagePersistenceGatewayImpl(messageRepository)
+                }
+                val sendMessageUseCase = remember(aiRepository, messagePersistenceGateway, scope) {
+                    SendMessageUseCase(aiRepository, messagePersistenceGateway, scope)
+                }
+                val pauseStreamingUseCase = remember(aiRepository) {
+                    PauseStreamingUseCase(aiRepository)
+                }
+                val rollbackMessageUseCase = remember(aiRepository) {
+                    RollbackMessageUseCase(aiRepository, messagePersistenceGateway)
+                }
+
+                val conversationLogic = remember(
+                    currentSession,
+                    // ADD ANY OTHER NECESSARY KEYS HERE
+                ) {
+                    ConversationLogic(
+                        uiState = exampleUiState,
+                        context = context,
+                        authorMe = "me",
+                        timeNow = "Now",
+                        sendMessageUseCase = sendMessageUseCase,
+                        pauseStreamingUseCase = pauseStreamingUseCase,
+                        rollbackMessageUseCase = rollbackMessageUseCase,
+                        sessionId = currentSession?.id ?: UUID.randomUUID().toString(),
+                        getProviderSettings = { providerSettings },
+                        persistenceGateway = messagePersistenceGateway,
+                        onRenameSession = { sessionId, newName ->
+                            chatViewModel.renameSession(sessionId, newName)
+                        }
+                    )
+                }
+                
                 // 将 MessageEntity 转换为 Message
-                // 数据库查询是按 createdAt ASC（从旧到新）排序的：[A(旧), B, C(新)]
-                // 由于 LazyColumn 使用 reverseLayout = true，列表会反向显示：
-                //   - 列表第一个元素（索引0）显示在底部
-                //   - 列表最后一个元素显示在顶部
-                // 要让旧消息在顶部、新消息在底部，列表应该是：[C(新), B, A(旧)]
-                // addMessage 会将消息添加到列表顶部（索引0），所以我们需要按从旧到新的顺序添加
                 val convertedMessages = remember(messagesFromDb) {
                     messagesFromDb.map { entity ->
                         convertMessageEntityToMessage(entity)
@@ -115,6 +162,7 @@ class ConversationFragment : Fragment() {
                 JetchatTheme {
                     ConversationContent(
                         uiState = exampleUiState, // 示例 UI 状态
+                        logic = conversationLogic,
                         navigateToProfile = { user ->
                             // 导航到个人资料页面的回调
                             val bundle = bundleOf("userId" to user)

@@ -35,6 +35,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 /**
  * Handles the business logic for processing messages in the conversation.
@@ -50,7 +51,8 @@ class ConversationLogic(
     private val rollbackMessageUseCase: RollbackMessageUseCase,
     private val sessionId: String,
     private val getProviderSettings: () -> List<ProviderSetting>,
-    private val persistenceGateway: MessagePersistenceGateway? = null
+    private val persistenceGateway: MessagePersistenceGateway? = null,
+    private val onRenameSession: (sessionId: String, newName: String) -> Unit // ADDED
 ) {
 
     private var activeTaskId: String? = null
@@ -96,6 +98,14 @@ class ConversationLogic(
         retrieveKnowledge: suspend (String) -> String = { "" },
         isRetry: Boolean = false
     ) {
+        // ADDED: Auto-rename session logic
+        if (!isAutoTriggered && uiState.channelName == "New Chat" && uiState.messages.none { it.author == authorMe }) {
+            val newTitle = inputContent.take(20).trim()
+            if (newTitle.isNotBlank()) {
+                onRenameSession(sessionId, newTitle)
+            }
+        }
+
         // 1. 如果是用户手动发送，立即显示消息；自动追问也显示在 UI 上
         // 如果是重试 (isRetry=true)，则跳过 UI 消息添加
         if (!isRetry) {
@@ -342,53 +352,25 @@ class ConversationLogic(
                         content = "Previous Response:\n$fullResponse"
                     )
 
-                    val plannerHistory = listOf(
-                        ChatDataItem(
-                            role = "system",
-                            content = plannerSystemPrompt
-                        )
-                    )
-
-                    // 使用相同的 provider/model 进行规划
-                    val plannerParams = TextGenerationParams(
-                        model = model,
-                        temperature = 0.3f, // 使用较低温度以获得更确定的指令
-                        maxTokens = 100
+                    val plannerHistory = listOf<ChatDataItem>(
+                        ChatDataItem(role="system", content=plannerSystemPrompt)
                     )
 
                     val plannerResult = sendMessageUseCase(
-                        sessionId = sessionId + "_planner", // 使用不同的 sessionId 避免混淆
+                        sessionId = UUID.randomUUID().toString(), // Use a temporary session for planning
                         userMessage = plannerUserMessage,
                         history = plannerHistory,
                         providerSetting = providerSetting,
-                        params = plannerParams
+                        params = TextGenerationParams(
+                            model = model,
+                            temperature = 0.3f, // Lower temperature for more deterministic instructions
+                            maxTokens = 100
+                        )
                     )
 
                     var nextInstruction = ""
-                    try {
-                        plannerResult.stream.collect { delta ->
-                            nextInstruction += delta
-                        }
-                    } catch (e: CancellationException) {
-                        // 协程取消异常，重新抛出
-                        throw e
-                    } catch (e: Exception) {
-                        // 检查是否为取消相关的异常
-                        val isCancelled = e is LlmError.CancelledError || 
-                                e.javaClass.simpleName.contains("CancelledError") ||
-                                e.message?.contains("请求已取消") == true ||
-                                e.message?.contains("Cancelled") == true ||
-                                e.cause is LlmError.CancelledError ||
-                                e.cause is CancellationException
-                        
-                        if (isCancelled) {
-                            // 取消操作，停止 planner
-                            nextInstruction = "STOP"
-                        } else {
-                            // 其他异常，记录但不中断流程
-                            android.util.Log.e("ConversationLogic", "Planner stream error: ${e.message}", e)
-                            nextInstruction = "STOP"
-                        }
+                    plannerResult.stream.collect { delta ->
+                        nextInstruction += delta
                     }
                     nextInstruction = nextInstruction.trim()
 
@@ -406,109 +388,38 @@ class ConversationLogic(
                 }
 
             } catch (e: Exception) {
-                // ✅ 异常时也要设置生成状态为 false
+                if (e is CancellationException) {
+                    // 流被取消是正常操作，不需要显示错误
+                    withContext(Dispatchers.Main) {
+                        uiState.isGenerating = false
+                        // 确保 AI 消息容器不是加载状态
+                        uiState.updateLastMessageLoadingState(false)
+                        // 可以选择添加一条“已取消”的提示，或者直接保持原样
+                        if (uiState.messages.last().content.isBlank()) {
+                            uiState.appendToLastMessage("[Cancelled]")
+                        }
+                    }
+                    return@processMessage
+                }
                 withContext(Dispatchers.Main) {
+                    uiState.addMessage(
+                        Message("System", "Error: ${e.message}", timeNow)
+                    )
                     uiState.isGenerating = false
                 }
-                
-                // 检查是否为取消操作导致的异常，如果是则不显示错误
-                val isCancelled = e is LlmError.CancelledError || 
-                        e.javaClass.simpleName.contains("CancelledError") ||
-                        e.message?.contains("请求已取消") == true ||
-                        e.message?.contains("Cancelled") == true ||
-                        e.cause is LlmError.CancelledError
-                
-                if (isCancelled) {
-                    // 取消操作是正常的，不显示错误
-                    withContext(Dispatchers.Main) {
-                        val lastMsg = uiState.messages.firstOrNull()
-                        if (lastMsg?.author == "AI" && (lastMsg.content.isEmpty() || lastMsg.isLoading)) {
-                            uiState.removeFirstMessage()
-                        }
-                    }
-                    return
-                }
-                
-                // 检查是否为 SiliconCloud 兜底失效导致的异常
-                // 异常可能被 LlmError 包装，所以需要检查 message 和 cause
-                // 同时也处理 "请求参数无效" (LlmError.RequestError) 的情况，认为这也可能意味着免费策略失效
-                val errorMessage = e.message ?: ""
-                val causeMessage = e.cause?.message ?: ""
-
-                val isFallbackInvalidated = errorMessage.contains("SiliconCloud fallback strategy invalidated") ||
-                        causeMessage.contains("SiliconCloud fallback strategy invalidated")
-
-                // 如果是 RequestError (通常表现为 422/400) 且我们正在尝试 SiliconCloud 的免费模型
-                // 这可能意味着之前的 "sk-..." key 彻底失效被拒了
-                val isRequestError = e.javaClass.simpleName.contains("RequestError") || errorMessage.contains("请求参数无效")
-
-                // 如果是认证错误 (401/403)
-                val isAuthError = e.javaClass.simpleName.contains("AuthenticationError") || errorMessage.contains("认证失败")
-
-                if (isFallbackInvalidated || isRequestError || isAuthError) {
-                    // ✅ 移除加载状态的空消息
-                    withContext(Dispatchers.Main) {
-                        val lastMsg = uiState.messages.firstOrNull()
-                        if (lastMsg?.author == "AI" && (lastMsg.content.isEmpty() || lastMsg.isLoading)) {
-                            uiState.removeFirstMessage()
-                        }
-
-                        val reason = if (isFallbackInvalidated) "兜底失效" else "API 请求被拒 ($errorMessage)"
-                        uiState.addMessage(Message("System", "SiliconCloud $reason，正在切换到本地 Ollama...", timeNow))
-                    }
-
-                    // 构造 Ollama 兜底设置
-                    // 优先使用用户已配置且启用的 Ollama 设置，以复用正确的 Base URL
-                    val existingOllama = getProviderSettings()
-                        .filterIsInstance<ProviderSetting.Ollama>()
-                        .firstOrNull { it.enabled }
-
-                    // 如果找不到，使用默认配置，但将 localhost 改为 10.0.2.2 以适配模拟器环境
-                    val fallbackSetting = existingOllama ?: ProviderSetting.Ollama(
-                        baseUrl = "http://10.0.2.2:11434"
-                    )
-
-                    // 尝试使用用户 Ollama 配置中的第一个模型作为兜底
-                    val fallbackModel = fallbackSetting.models.firstOrNull() ?: Model(
-                        modelId = "",
-                        displayName = ""
-                    )
-
-                    // 递归重试（新的 processMessage 调用会重新设置 isGenerating）
-                    processMessage(
-                        inputContent = inputContent,
-                        providerSetting = fallbackSetting,
-                        model = fallbackModel,
-                        isAutoTriggered = isAutoTriggered,
-                        loopCount = loopCount,
-                        retrieveKnowledge = retrieveKnowledge,
-                        isRetry = true
-                    )
-                    return
-                }
-
-                // ✅ 其他错误也移除加载状态，但不显示错误消息
-                withContext(Dispatchers.Main) {
-                    val lastMsg = uiState.messages.firstOrNull()
-                    if (lastMsg?.author == "AI" && (lastMsg.content.isEmpty() || lastMsg.isLoading)) {
-                        uiState.removeFirstMessage()
-                    }
-                    // 不显示错误消息，只记录日志
-                }
-                // 记录错误日志但不显示给用户
-                android.util.Log.e("ConversationLogic", "Error processing message: ${e.message}", e)
+                e.printStackTrace()
             }
         } else {
-            // ✅ 如果没有 provider 或 model，设置生成状态为 false
-            withContext(Dispatchers.Main) {
-                uiState.isGenerating = false
-                uiState.addMessage(
-                    Message("System", "No AI Provider configured.", timeNow)
-                )
-            }
+             uiState.addMessage(
+                Message("System", "No AI Provider configured.", timeNow)
+            )
+            uiState.isGenerating = false
         }
     }
-
+    
+    /**
+     * 将 UIMessage 转换为 ChatDataItem
+     */
     private fun toChatDataItem(message: UIMessage): ChatDataItem {
         val builder = StringBuilder()
         message.parts.forEach { part ->
