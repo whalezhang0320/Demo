@@ -63,8 +63,14 @@ fun ChannelNameBar(
             onSessionSelected = {
                 onSessionSelected(it)
                 isSearchActive = false
+                // 选择会话后清空搜索查询
+                onSearchQueryChanged("")
             },
-            onCloseSearch = { isSearchActive = false }
+            onCloseSearch = { 
+                isSearchActive = false
+                // 关闭搜索时清空搜索查询
+                onSearchQueryChanged("")
+            }
         )
     } else {
         JetchatAppBar(

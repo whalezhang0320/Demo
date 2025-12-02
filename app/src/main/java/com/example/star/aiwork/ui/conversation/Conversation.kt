@@ -335,6 +335,12 @@ fun ConversationContent(
                 navigateToProfile = navigateToProfile,
                 modifier = Modifier.weight(1f),
                 scrollState = scrollState,
+                logic = logic,
+                providerSetting = providerSetting,
+                model = model,
+                retrieveKnowledge = retrieveKnowledge,
+                scope = scope,
+                isGenerating = uiState.isGenerating
             )
 
             // 用户输入区域//f2

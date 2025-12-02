@@ -508,6 +508,169 @@ class ConversationLogic(
     }
     
     /**
+     * 回滚最后一条助手消息并重新生成
+     */
+    suspend fun rollbackAndRegenerate(
+        providerSetting: ProviderSetting?,
+        model: Model?,
+        retrieveKnowledge: suspend (String) -> String = { "" }
+    ) {
+        if (providerSetting == null || model == null) {
+            withContext(Dispatchers.Main) {
+                uiState.addMessage(
+                    Message("System", "No AI Provider configured.", timeNow)
+                )
+            }
+            return
+        }
+
+        // 获取最后一条用户消息
+        val lastUserMessage = uiState.messages.findLast { it.author == authorMe }
+        if (lastUserMessage == null) {
+            return
+        }
+
+        try {
+            // 设置生成状态为 true
+            withContext(Dispatchers.Main) {
+                uiState.isGenerating = true
+            }
+
+            // 构建历史消息（排除最后一条助手消息）
+            val allMessages = uiState.messages.asReversed()
+                .filter { it.author != "System" } // 过滤掉 System 消息
+            
+            // 找到最后一条助手消息的索引并排除它
+            val lastAssistantIndex = allMessages.indexOfFirst { it.author != authorMe }
+            val historyMessages = if (lastAssistantIndex >= 0) {
+                allMessages.take(lastAssistantIndex) + allMessages.drop(lastAssistantIndex + 1)
+            } else {
+                allMessages
+            }
+            
+            val contextMessages = historyMessages.map { msg ->
+                val role = if (msg.author == authorMe) MessageRole.USER else MessageRole.ASSISTANT
+                ChatDataItem(
+                    role = role.name.lowercase(),
+                    content = msg.content
+                )
+            }.toMutableList()
+
+            // 获取最后一条用户消息（用于重新生成）
+            val lastUserMsg = historyMessages.lastOrNull { it.author == authorMe }
+            if (lastUserMsg == null) {
+                withContext(Dispatchers.Main) {
+                    uiState.isGenerating = false
+                }
+                return
+            }
+
+            val params = TextGenerationParams(
+                model = model,
+                temperature = uiState.temperature,
+                maxTokens = uiState.maxTokens
+            )
+
+            // 调用 RollbackMessageUseCase
+            // history 应该包含除了最后一条助手消息之外的所有历史对话
+            val rollbackResult = rollbackMessageUseCase(
+                sessionId = sessionId,
+                history = contextMessages,
+                providerSetting = providerSetting,
+                params = params
+            )
+
+            rollbackResult.fold(
+                onSuccess = { flowResult ->
+                    // 移除 UI 中的最后一条助手消息
+                    withContext(Dispatchers.Main) {
+                        uiState.removeLastAssistantMessage(authorMe)
+                        // 添加一个带加载状态的空 AI 消息作为容器
+                        uiState.addMessage(Message("AI", "", timeNow, isLoading = true))
+                    }
+
+                    activeTaskId = flowResult.taskId
+
+                    var fullResponse = ""
+                    var lastUpdateTime = 0L
+                    val UPDATE_INTERVAL_MS = 500L
+
+                    // 收集流式响应
+                    flowResult.stream.asCharTypingStream(charDelayMs = 30L).collect { delta ->
+                        fullResponse += delta
+                        withContext(Dispatchers.Main) {
+                            // 第一次收到内容时，移除加载状态
+                            if (delta.isNotEmpty()) {
+                                uiState.updateLastMessageLoadingState(false)
+                            }
+                            // 流式响应时逐字显示
+                            if (uiState.streamResponse) {
+                                uiState.appendToLastMessage(delta)
+                            }
+
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastUpdateTime >= UPDATE_INTERVAL_MS) {
+                                persistenceGateway?.replaceLastAssistantMessage(
+                                    sessionId,
+                                    ChatDataItem(
+                                        role = MessageRole.ASSISTANT.name.lowercase(),
+                                        content = fullResponse
+                                    )
+                                )
+                                lastUpdateTime = currentTime
+                            }
+                        }
+                    }
+
+                    // 流式响应结束后，如果是非流式模式，一次性显示完整内容
+                    withContext(Dispatchers.Main) {
+                        if (!uiState.streamResponse && fullResponse.isNotBlank()) {
+                            uiState.updateLastMessageLoadingState(false)
+                            uiState.appendToLastMessage(fullResponse)
+                        }
+                        uiState.isGenerating = false
+                    }
+
+                    // 更新最终内容到数据库
+                    if (fullResponse.isNotBlank()) {
+                        persistenceGateway?.replaceLastAssistantMessage(
+                            sessionId,
+                            ChatDataItem(
+                                role = MessageRole.ASSISTANT.name.lowercase(),
+                                content = fullResponse
+                            )
+                        )
+                        onSessionUpdated(sessionId)
+                    }
+                },
+                onFailure = { error ->
+                    withContext(Dispatchers.Main) {
+                        uiState.isGenerating = false
+                        uiState.updateLastMessageLoadingState(false)
+                        val errorMessage = formatErrorMessage(
+                            error as? Exception ?: Exception(error.message, error)
+                        )
+                        uiState.addMessage(
+                            Message("System", errorMessage, timeNow)
+                        )
+                    }
+                    error.printStackTrace()
+                }
+            )
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                uiState.isGenerating = false
+                uiState.updateLastMessageLoadingState(false)
+                val errorMessage = formatErrorMessage(e)
+                uiState.addMessage(
+                    Message("System", errorMessage, timeNow)
+                )
+            }
+            e.printStackTrace()
+        }
+    }
+
+    /**
      * 将 UIMessage 转换为 ChatDataItem
      */
     private fun toChatDataItem(message: UIMessage): ChatDataItem {

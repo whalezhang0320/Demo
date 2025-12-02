@@ -115,6 +115,18 @@ class ConversationUiState(
             _messages[0] = lastMsg.copy(isLoading = isLoading)
         }
     }
+
+    /**
+     * 移除最后一条助手消息（用于回滚功能）
+     */
+    fun removeLastAssistantMessage(authorMe: String) {
+        val index = _messages.indexOfFirst { 
+            it.author != authorMe && it.author != "System" 
+        }
+        if (index >= 0) {
+            _messages.removeAt(index)
+        }
+    }
 }
 
 /**

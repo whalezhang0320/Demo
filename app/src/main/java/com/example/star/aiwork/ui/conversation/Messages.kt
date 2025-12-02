@@ -42,6 +42,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -85,6 +89,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import com.example.star.aiwork.domain.model.Model
+import com.example.star.aiwork.domain.model.ProviderSetting
+import kotlinx.coroutines.CoroutineScope
 
 const val ConversationTestTag = "ConversationTestTag"
 
@@ -97,12 +104,29 @@ fun Messages(
     messages: List<Message>,
     navigateToProfile: (String) -> Unit,
     scrollState: LazyListState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    logic: ConversationLogic? = null,
+    providerSetting: ProviderSetting? = null,
+    model: Model? = null,
+    retrieveKnowledge: suspend (String) -> String = { "" },
+    scope: CoroutineScope? = null,
+    isGenerating: Boolean = false
 ) {
-    val scope = rememberCoroutineScope()
+    val coroutineScope = scope ?: rememberCoroutineScope()
     Box(modifier = modifier) {
 
         val authorMe = stringResource(id = R.string.author_me)
+        
+        // 找到最后一条助手消息（在 reverseLayout 中，第一条消息是最后一条）
+        val lastAssistantMessageIndex = messages.indexOfFirst { 
+            it.author != authorMe && it.author != "System" 
+        }
+        val showRegenerateButton = lastAssistantMessageIndex >= 0 && 
+                                   logic != null && 
+                                   providerSetting != null && 
+                                   model != null &&
+                                   !messages[lastAssistantMessageIndex].isLoading
+        
         LazyColumn(
             reverseLayout = true,
             state = scrollState,
@@ -116,6 +140,7 @@ fun Messages(
                 val content = messages[index]
                 val isFirstMessageByAuthor = prevAuthor != content.author
                 val isLastMessageByAuthor = nextAuthor != content.author
+                val isLastAssistantMessage = index == lastAssistantMessageIndex
 
                 // 为了简单起见，硬编码日期分隔线
                 if (index == messages.size - 1) {
@@ -135,6 +160,27 @@ fun Messages(
                         isUserMe = content.author == authorMe,
                         isFirstMessageByAuthor = isFirstMessageByAuthor,
                         isLastMessageByAuthor = isLastMessageByAuthor,
+                        isLastAssistantMessage = isLastAssistantMessage,
+                        showRegenerateButton = showRegenerateButton && isLastAssistantMessage,
+                        onRegenerateClick = {
+                            coroutineScope.launch {
+                                logic?.rollbackAndRegenerate(
+                                    providerSetting = providerSetting,
+                                    model = model,
+                                    retrieveKnowledge = retrieveKnowledge
+                                )
+                            }
+                        },
+                        onThumbUpClick = {
+                            // TODO: 实现点赞功能
+                        },
+                        onThumbDownClick = {
+                            // TODO: 实现点踩功能
+                        },
+                        onMoreClick = {
+                            // TODO: 实现更多操作功能
+                        },
+                        isGenerating = isGenerating
                     )
                 }
             }
@@ -155,7 +201,7 @@ fun Messages(
         JumpToBottom(
             enabled = jumpToBottomButtonEnabled,
             onClicked = {
-                scope.launch {
+                coroutineScope.launch {
                     scrollState.animateScrollToItem(0)
                 }
             },
@@ -174,6 +220,13 @@ fun Message(
     isUserMe: Boolean,
     isFirstMessageByAuthor: Boolean,
     isLastMessageByAuthor: Boolean,
+    isLastAssistantMessage: Boolean = false,
+    showRegenerateButton: Boolean = false,
+    onRegenerateClick: () -> Unit = {},
+    onThumbUpClick: () -> Unit = {},
+    onThumbDownClick: () -> Unit = {},
+    onMoreClick: () -> Unit = {},
+    isGenerating: Boolean = false
 ) {
     val borderColor = if (isUserMe) {
         MaterialTheme.colorScheme.primary
@@ -215,6 +268,13 @@ fun Message(
             isFirstMessageByAuthor = isFirstMessageByAuthor,
             isLastMessageByAuthor = isLastMessageByAuthor,
             authorClicked = onAuthorClick,
+            isLastAssistantMessage = isLastAssistantMessage,
+            showRegenerateButton = showRegenerateButton,
+            onRegenerateClick = onRegenerateClick,
+            onThumbUpClick = onThumbUpClick,
+            onThumbDownClick = onThumbDownClick,
+            onMoreClick = onMoreClick,
+            isGenerating = isGenerating,
             modifier = Modifier
                 .padding(end = if (isUserMe) 16.dp else 16.dp)
                 .widthIn(max = 300.dp)
@@ -233,12 +293,108 @@ fun AuthorAndTextMessage(
     isLastMessageByAuthor: Boolean,
     authorClicked: (String) -> Unit,
     modifier: Modifier = Modifier,
+    isLastAssistantMessage: Boolean = false,
+    showRegenerateButton: Boolean = false,
+    onRegenerateClick: () -> Unit = {},
+    onThumbUpClick: () -> Unit = {},
+    onThumbDownClick: () -> Unit = {},
+    onMoreClick: () -> Unit = {},
+    isGenerating: Boolean = false
 ) {
     Column(modifier = modifier) {
         if (isLastMessageByAuthor && !isUserMe) {
             AuthorNameTimestamp(msg)
         }
         ChatItemBubble(msg, isUserMe, authorClicked = authorClicked)
+        
+        // 在消息气泡底部显示操作按钮（水平并排）
+        // 排列顺序：复制 + 点赞 + 点踩 + 重新生成 + 更多操作
+        // 当 isGenerating 为 true 时，不显示功能栏
+        if (!isUserMe && msg.author != "System" && !isGenerating) {
+            val clipboardManager = LocalClipboardManager.current
+            val showCopyButton = isPureTextContent(msg.content) && msg.content.isNotEmpty()
+            val showRegenerate = isLastAssistantMessage && showRegenerateButton
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                // 1. 复制按钮
+                if (showCopyButton) {
+                    IconButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(msg.content))
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "复制",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                
+                // 2. 点赞按钮
+                IconButton(
+                    onClick = onThumbUpClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ThumbUp,
+                        contentDescription = "点赞",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                
+                // 3. 点踩按钮
+                IconButton(
+                    onClick = onThumbDownClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ThumbDown,
+                        contentDescription = "点踩",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                
+                // 4. 重新生成按钮（仅最后一条助手消息）
+                if (showRegenerate) {
+                    IconButton(
+                        onClick = onRegenerateClick,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "重新生成",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                
+                // 5. 更多操作按钮
+                IconButton(
+                    onClick = onMoreClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreHoriz,
+                        contentDescription = "更多操作",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+        
         if (isFirstMessageByAuthor) {
             Spacer(modifier = Modifier.height(8.dp))
         } else {
@@ -320,8 +476,6 @@ fun ChatItemBubble(
         else -> MaterialTheme.colorScheme.surfaceContainer // 淡灰色背景
     }
 
-    val clipboardManager = LocalClipboardManager.current
-
     Column {
         Surface(
             color = backgroundBubbleColor,
@@ -341,27 +495,6 @@ fun ChatItemBubble(
                     )
                 }
 
-                // 智能复制按钮 - 仅AI消息且为纯文本显示
-                // 错误信息气泡不展示复制按键
-                if (!isUserMe && message.author != "System" && isPureTextContent(message.content) && message.content.isNotEmpty()) {
-                //if (!isUserMe && isPureTextContent(message.content) && message.content.isNotEmpty()) {
-                    IconButton(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(message.content))
-                        },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(32.dp)
-                            .padding(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "复制",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
             }
         }
 

@@ -25,6 +25,7 @@ import com.example.star.aiwork.domain.usecase.message.ObserveMessagesUseCase
 import com.example.star.aiwork.domain.usecase.session.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import java.util.*
 import kotlinx.coroutines.flow.SharingStarted
 
@@ -51,6 +52,13 @@ class ChatViewModel(
     
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+    
+    // 独立的搜索结果列表，不会影响drawer中的sessions列表
+    private val _searchResults = MutableStateFlow<List<SessionEntity>>(emptyList())
+    val searchResults: StateFlow<List<SessionEntity>> = _searchResults.asStateFlow()
+    
+    // 管理搜索任务的Job，用于取消之前的搜索任务
+    private var searchJob: Job? = null
 
     // 跟踪临时创建的会话（isNewChat标记）
     private val _newChatSessions = MutableStateFlow<Set<String>>(emptySet())
@@ -108,9 +116,10 @@ class ChatViewModel(
         viewModelScope.launch {
             getSessionListUseCase().collect { list ->
                 _sessions.value = list
-                if (_currentSession.value == null) {
-                    _currentSession.value = list.firstOrNull()
-                }
+                // 不再自动选择第一个会话，始终显示空对话页面
+                // if (_currentSession.value == null) {
+                //     _currentSession.value = list.firstOrNull()
+                // }
             }
         }
     }
@@ -126,9 +135,20 @@ class ChatViewModel(
     
     fun searchSessions(query: String) {
         _searchQuery.value = query
-        viewModelScope.launch {
-            searchSessionsUseCase(query).collect { list ->
-                _sessions.value = list
+        
+        // 取消之前的搜索任务
+        searchJob?.cancel()
+        
+        if (query.isBlank()) {
+            // 如果查询为空，清空搜索结果
+            _searchResults.value = emptyList()
+            searchJob = null
+        } else {
+            // 搜索时更新搜索结果，不影响原始的sessions列表
+            searchJob = viewModelScope.launch {
+                searchSessionsUseCase(query).collect { list ->
+                    _searchResults.value = list
+                }
             }
         }
     }
