@@ -7,6 +7,7 @@ import com.example.star.aiwork.domain.model.MessageRole
 import com.example.star.aiwork.domain.model.MessageStatus
 import com.example.star.aiwork.domain.model.MessageType
 import com.example.star.aiwork.domain.repository.MessageRepository
+import com.example.star.aiwork.domain.repository.SessionRepository
 import com.example.star.aiwork.domain.usecase.MessagePersistenceGateway
 import java.util.UUID
 
@@ -16,9 +17,11 @@ import java.util.UUID
  * 负责在流式对话过程中将消息持久化到数据库。
  * 
  * @param messageRepository 消息仓库，用于数据库操作
+ * @param sessionRepository 会话仓库，用于更新会话的 updatedAt
  */
 class MessagePersistenceGatewayImpl(
-    private val messageRepository: MessageRepository
+    private val messageRepository: MessageRepository,
+    private val sessionRepository: SessionRepository? = null
 ) : MessagePersistenceGateway {
 
     /**
@@ -30,6 +33,8 @@ class MessagePersistenceGatewayImpl(
     override suspend fun appendMessage(sessionId: String, message: ChatDataItem) {
         val messageEntity = convertToMessageEntity(sessionId, message)
         messageRepository.insertMessage(messageEntity)
+        // 更新会话的 updatedAt，让 drawer 中的会话按更新时间排序
+        updateSessionUpdatedAt(sessionId)
     }
 
     /**
@@ -72,6 +77,10 @@ class MessagePersistenceGatewayImpl(
             
             // 使用 insertMessage，由于数据库使用 CONFLICT_REPLACE，相同 ID 会更新记录
             messageRepository.insertMessage(updatedMessage)
+            // 如果消息状态为 DONE（流式结束），更新会话的 updatedAt
+            if (updatedMessage.status == com.example.star.aiwork.domain.model.MessageStatus.DONE) {
+                updateSessionUpdatedAt(sessionId)
+            }
         } else {
             // 如果没有找到助手消息，则追加新消息
             appendMessage(sessionId, newMessage)
@@ -145,6 +154,20 @@ class MessagePersistenceGatewayImpl(
             createdAt = System.currentTimeMillis(),
             status = status
         )
+    }
+    
+    /**
+     * 更新会话的 updatedAt 时间戳
+     */
+    private suspend fun updateSessionUpdatedAt(sessionId: String) {
+        sessionRepository?.let { repo ->
+            val session = repo.getSession(sessionId)
+            if (session != null) {
+                repo.updateSession(
+                    session.copy(updatedAt = System.currentTimeMillis())
+                )
+            }
+        }
     }
 }
 

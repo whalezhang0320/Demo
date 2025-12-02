@@ -52,6 +52,10 @@ class ChatViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    // 跟踪临时创建的会话（isNewChat标记）
+    private val _newChatSessions = MutableStateFlow<Set<String>>(emptySet())
+    val newChatSessions: StateFlow<Set<String>> = _newChatSessions.asStateFlow()
+
     // 使用 flatMapLatest 自动根据 currentSession 切换消息流
     val messages: StateFlow<List<MessageEntity>> = _currentSession
         .flatMapLatest { session ->
@@ -70,6 +74,32 @@ class ChatViewModel(
     private val _draft = MutableStateFlow<String?>(null)
     val draft: StateFlow<String?> = _draft.asStateFlow()
 
+    // 为每个会话管理独立的 ConversationUiState
+    private val _sessionUiStates = MutableStateFlow<Map<String, ConversationUiState>>(emptyMap())
+    
+    /**
+     * 获取或创建指定会话的 ConversationUiState
+     */
+    fun getOrCreateSessionUiState(sessionId: String, sessionName: String): ConversationUiState {
+        val currentStates = _sessionUiStates.value
+        return currentStates[sessionId] ?: run {
+            val newUiState = ConversationUiState(
+                channelName = sessionName.ifBlank { "新对话" },
+                channelMembers = 1,
+                initialMessages = emptyList()
+            )
+            _sessionUiStates.value = currentStates + (sessionId to newUiState)
+            newUiState
+        }
+    }
+    
+    /**
+     * 获取指定会话的 ConversationUiState（如果不存在则返回 null）
+     */
+    fun getSessionUiState(sessionId: String): ConversationUiState? {
+        return _sessionUiStates.value[sessionId]
+    }
+
     init {
         loadSessions()
     }
@@ -82,6 +112,15 @@ class ChatViewModel(
                     _currentSession.value = list.firstOrNull()
                 }
             }
+        }
+    }
+    
+    /**
+     * 手动刷新会话列表（用于在会话更新后刷新 drawer 中的列表）
+     */
+    suspend fun refreshSessions() {
+        getSessionListUseCase().firstOrNull()?.let { list ->
+            _sessions.value = list
         }
     }
     
@@ -136,6 +175,8 @@ class ChatViewModel(
             val session = _currentSession.value ?: return@launch
             renameSessionUseCase(session.id, newName)
             _currentSession.value = session.copy(name = newName)
+            // 更新 UI 状态的 channelName
+            getSessionUiState(session.id)?.channelName = newName.ifBlank { "新对话" }
         }
     }
 
@@ -147,6 +188,8 @@ class ChatViewModel(
             if (currentSession?.id == sessionId) {
                 _currentSession.value = currentSession.copy(name = newName)
             }
+            // 更新 UI 状态的 channelName
+            getSessionUiState(sessionId)?.channelName = newName.ifBlank { "新对话" }
             // 刷新会话列表
             loadSessions()
         }
@@ -172,6 +215,8 @@ class ChatViewModel(
                 // messages 会自动清空（通过 flatMapLatest 返回 emptyList）
                 _draft.value = null
             }
+            // 清理该会话的 UI 状态
+            _sessionUiStates.value = _sessionUiStates.value - sessionId
             // 刷新会话列表
             loadSessions()
         }
@@ -280,7 +325,31 @@ class ChatViewModel(
     fun selectSession(session: SessionEntity) {
         _currentSession.value = session
         // messages 会自动通过 flatMapLatest 加载，无需手动调用 loadMessages
+        // 确保会话的 UI 状态已创建
+        getOrCreateSessionUiState(session.id, session.name)
         loadDraft()
+    }
+
+    /**
+     * 检查会话是否为新创建的临时会话
+     */
+    fun isNewChat(sessionId: String): Boolean {
+        return _newChatSessions.value.contains(sessionId)
+    }
+
+    /**
+     * 持久化新会话并取消isNewChat标记
+     */
+    suspend fun persistNewChatSession(sessionId: String) {
+        val session = _currentSession.value
+        if (session != null && session.id == sessionId && _newChatSessions.value.contains(sessionId)) {
+            // 持久化会话
+            createSessionUseCase(session)
+            // 更新会话列表
+            _sessions.value = _sessions.value + session
+            // 取消isNewChat标记
+            _newChatSessions.value = _newChatSessions.value - sessionId
+        }
     }
 
     companion object {

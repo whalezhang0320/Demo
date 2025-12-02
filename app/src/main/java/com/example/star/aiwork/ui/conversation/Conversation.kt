@@ -426,7 +426,9 @@ fun ConversationPreview() {
         val aiRepository = AiRepositoryImpl(remoteDataSource)
         val messageLocalDataSource = MessageLocalDataSourceImpl(context)
         val messageRepository = MessageRepositoryImpl(messageLocalDataSource)
-        val persistenceGateway = MessagePersistenceGatewayImpl(messageRepository)
+        val sessionLocalDataSource = com.example.star.aiwork.data.local.datasource.SessionLocalDataSourceImpl(context)
+        val sessionRepository = com.example.star.aiwork.data.repository.SessionRepositoryImpl(sessionLocalDataSource)
+        val persistenceGateway = MessagePersistenceGatewayImpl(messageRepository, sessionRepository)
 
         val sendMessageUseCase = SendMessageUseCase(aiRepository, persistenceGateway, scope)
         val pauseStreamingUseCase = PauseStreamingUseCase(aiRepository)
@@ -443,7 +445,9 @@ fun ConversationPreview() {
             sessionId = "123",
             getProviderSettings = { emptyList() },
             persistenceGateway = persistenceGateway,
-            onRenameSession = { _, _ -> }
+            onRenameSession = { _, _ -> },
+            onPersistNewChatSession = { },
+            isNewChat = { false }
         )
 
         ConversationContent(

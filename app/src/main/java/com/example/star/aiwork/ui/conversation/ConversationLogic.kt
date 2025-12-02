@@ -56,7 +56,10 @@ class ConversationLogic(
     private val sessionId: String,
     private val getProviderSettings: () -> List<ProviderSetting>,
     private val persistenceGateway: MessagePersistenceGateway? = null,
-    private val onRenameSession: (sessionId: String, newName: String) -> Unit // ADDED
+    private val onRenameSession: (sessionId: String, newName: String) -> Unit, // ADDED
+    private val onPersistNewChatSession: suspend (sessionId: String) -> Unit = { }, // ADDED: 持久化新会话的回调
+    private val isNewChat: (sessionId: String) -> Boolean = { false }, // ADDED: 检查是否为新会话
+    private val onSessionUpdated: suspend (sessionId: String) -> Unit = { } // ADDED: 会话更新后的回调，用于刷新会话列表
 ) {
 
     private var activeTaskId: String? = null
@@ -102,8 +105,12 @@ class ConversationLogic(
         retrieveKnowledge: suspend (String) -> String = { "" },
         isRetry: Boolean = false
     ) {
+        // 如果isNewChat，持久化会话并取消isNewChat标记
+        if (isNewChat(sessionId)) {
+            onPersistNewChatSession(sessionId)
+        }
         // ADDED: Auto-rename session logic
-        if (!isAutoTriggered && uiState.channelName == "New Chat" && uiState.messages.none { it.author == authorMe }) {
+        if (!isAutoTriggered && (uiState.channelName == "New Chat" || uiState.channelName == "新聊天") && uiState.messages.none { it.author == authorMe }) {
             val newTitle = inputContent.take(20).trim()
             if (newTitle.isNotBlank()) {
                 onRenameSession(sessionId, newTitle)
@@ -369,6 +376,8 @@ class ConversationLogic(
                             content = fullResponse
                         )
                     )
+                    // 通知会话已更新，刷新会话列表（让 drawer 中的会话按 updatedAt 排序）
+                    onSessionUpdated(sessionId)
                 }
 
                 // --- Auto-Loop Logic with Planner ---
