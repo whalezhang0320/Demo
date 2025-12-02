@@ -117,7 +117,9 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
             list.add(
                 SessionRecord(
                     id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
-                    name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
+                    name = cursor.getString(cursor.getColumnIndexOrThrow(
+                        "name"
+                    )),
                     createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("createdAt")),
                     updatedAt = cursor.getLong(cursor.getColumnIndexOrThrow("updatedAt")),
                     pinned = cursor.getInt(cursor.getColumnIndexOrThrow("pinned")) == 1,

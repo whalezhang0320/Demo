@@ -60,6 +60,7 @@ import com.example.star.aiwork.domain.model.ProviderSetting
 import com.example.star.aiwork.data.repository.MessagePersistenceGatewayImpl
 import com.example.star.aiwork.data.repository.MessageRepositoryImpl
 import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
+import com.example.star.aiwork.domain.model.SessionEntity
 import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
 import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
 import com.example.star.aiwork.domain.usecase.SendMessageUseCase
@@ -132,7 +133,11 @@ fun ConversationContent(
     streamResponse: Boolean = true,
     onUpdateSettings: (Float, Int, Boolean) -> Unit = { _, _, _ -> },
     retrieveKnowledge: suspend (String) -> String = { "" },
-    currentSessionId: String? = null
+    currentSessionId: String? = null,
+    searchQuery: String,
+    onSearchQueryChanged: (String) -> Unit,
+    searchResults: List<SessionEntity>,
+    onSessionSelected: (SessionEntity) -> Unit
 ) {
     val authorMe = stringResource(R.string.author_me)
     val timeNow = stringResource(id = R.string.now)
@@ -298,7 +303,11 @@ fun ConversationContent(
                 channelMembers = uiState.channelMembers,
                 onNavIconPressed = onNavIconPressed,
                 scrollBehavior = scrollBehavior,
-                onSettingsClicked = { showSettingsDialog = true }
+                onSettingsClicked = { showSettingsDialog = true },
+                searchQuery = searchQuery,
+                onSearchQueryChanged = onSearchQueryChanged,
+                searchResults = searchResults,
+                onSessionSelected = onSessionSelected
             )
         },
         // 排除 ime 和导航栏内边距，以便由 UserInput composable 添加
@@ -441,6 +450,10 @@ fun ConversationPreview() {
             uiState = exampleUiState,
             logic = previewLogic,
             navigateToProfile = { },
+            searchQuery = "",
+            onSearchQueryChanged = {},
+            searchResults = emptyList(),
+            onSessionSelected = {}
         )
     }
 }
