@@ -9,4 +9,5 @@ interface SessionRepository {
     suspend fun getSession(id: String): SessionEntity?
     fun observeSessions(): Flow<List<SessionEntity>>
     suspend fun deleteSession(id: String)
+    fun searchSessions(query: String): Flow<List<SessionEntity>>
 }

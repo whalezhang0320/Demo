@@ -28,4 +28,10 @@ class SessionRepositoryImpl(
     override suspend fun deleteSession(id: String) {
         local.deleteSession(id)
     }
+
+    override fun searchSessions(query: String): Flow<List<SessionEntity>> {
+        return local.searchSessions(query).map { list ->
+            list.map { SessionMapper.toEntity(it) }
+        }
+    }
 }

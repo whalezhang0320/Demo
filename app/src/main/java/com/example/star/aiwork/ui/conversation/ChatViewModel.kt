@@ -1,4 +1,3 @@
-// ChatViewModel.kt
 package com.example.star.aiwork.ui.conversation
 
 import android.app.Application
@@ -40,7 +39,8 @@ class ChatViewModel(
     private val rollbackMessageUseCase: RollbackMessageUseCase,
     private val observeMessagesUseCase: ObserveMessagesUseCase,
     private val getDraftUseCase: GetDraftUseCase,
-    private val updateDraftUseCase: UpdateDraftUseCase
+    private val updateDraftUseCase: UpdateDraftUseCase,
+    private val searchSessionsUseCase: SearchSessionsUseCase
 ) : ViewModel() {
 
     private val _sessions = MutableStateFlow<List<SessionEntity>>(emptyList())
@@ -48,6 +48,9 @@ class ChatViewModel(
 
     private val _currentSession = MutableStateFlow<SessionEntity?>(null)
     val currentSession: StateFlow<SessionEntity?> = _currentSession.asStateFlow()
+    
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     // 使用 flatMapLatest 自动根据 currentSession 切换消息流
     val messages: StateFlow<List<MessageEntity>> = _currentSession
@@ -78,6 +81,15 @@ class ChatViewModel(
                 if (_currentSession.value == null) {
                     _currentSession.value = list.firstOrNull()
                 }
+            }
+        }
+    }
+    
+    fun searchSessions(query: String) {
+        _searchQuery.value = query
+        viewModelScope.launch {
+            searchSessionsUseCase(query).collect { list ->
+                _sessions.value = list
             }
         }
     }
@@ -252,6 +264,7 @@ class ChatViewModel(
                 val deleteSessionUseCase = DeleteSessionUseCase(sessionRepository, messageRepository, draftRepository)
                 val pinSessionUseCase = PinSessionUseCase(sessionRepository)
                 val archiveSessionUseCase = ArchiveSessionUseCase(sessionRepository)
+                val searchSessionsUseCase = SearchSessionsUseCase(sessionRepository)
 
                 val sendMessageUseCase = SendMessageUseCase(messageRepository, sessionRepository)
                 val rollbackMessageUseCase = RollbackMessageUseCase(messageRepository)
@@ -271,7 +284,8 @@ class ChatViewModel(
                     rollbackMessageUseCase,
                     observeMessagesUseCase,
                     getDraftUseCase,
-                    updateDraftUseCase
+                    updateDraftUseCase,
+                    searchSessionsUseCase
                 ) as T
             }
         }

@@ -29,4 +29,9 @@ interface SessionLocalDataSource {
      * 删除会话
      */
     suspend fun deleteSession(id: String)
+
+    /**
+     * 搜索会话
+     */
+    fun searchSessions(query: String): Flow<List<SessionRecord>>
 }

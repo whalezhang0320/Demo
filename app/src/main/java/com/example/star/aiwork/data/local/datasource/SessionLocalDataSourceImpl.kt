@@ -97,4 +97,36 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
         val db = dbHelper.writableDatabase
         db.delete("sessions", "id = ?", arrayOf(id))
     }
+
+    override fun searchSessions(query: String): Flow<List<SessionRecord>> = flow {
+        val db = dbHelper.readableDatabase
+        val searchQuery = "%$query%"
+        val cursor = db.rawQuery(
+            """
+            SELECT * FROM sessions WHERE id IN (
+                SELECT id FROM sessions WHERE name LIKE ?
+                UNION
+                SELECT sessionId FROM messages WHERE content LIKE ?
+            ) ORDER BY updatedAt DESC
+            """.trimIndent(),
+            arrayOf(searchQuery, searchQuery)
+        )
+
+        val list = mutableListOf<SessionRecord>()
+        while (cursor.moveToNext()) {
+            list.add(
+                SessionRecord(
+                    id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
+                    name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
+                    createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("createdAt")),
+                    updatedAt = cursor.getLong(cursor.getColumnIndexOrThrow("updatedAt")),
+                    pinned = cursor.getInt(cursor.getColumnIndexOrThrow("pinned")) == 1,
+                    archived = cursor.getInt(cursor.getColumnIndexOrThrow("archived")) == 1
+                )
+            )
+        }
+
+        cursor.close()
+        emit(list)
+    }
 }
