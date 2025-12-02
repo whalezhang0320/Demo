@@ -42,7 +42,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -166,6 +169,15 @@ fun Messages(
                                     retrieveKnowledge = retrieveKnowledge
                                 )
                             }
+                        },
+                        onThumbUpClick = {
+                            // TODO: 实现点赞功能
+                        },
+                        onThumbDownClick = {
+                            // TODO: 实现点踩功能
+                        },
+                        onMoreClick = {
+                            // TODO: 实现更多操作功能
                         }
                     )
                 }
@@ -208,7 +220,10 @@ fun Message(
     isLastMessageByAuthor: Boolean,
     isLastAssistantMessage: Boolean = false,
     showRegenerateButton: Boolean = false,
-    onRegenerateClick: () -> Unit = {}
+    onRegenerateClick: () -> Unit = {},
+    onThumbUpClick: () -> Unit = {},
+    onThumbDownClick: () -> Unit = {},
+    onMoreClick: () -> Unit = {}
 ) {
     val borderColor = if (isUserMe) {
         MaterialTheme.colorScheme.primary
@@ -253,6 +268,9 @@ fun Message(
             isLastAssistantMessage = isLastAssistantMessage,
             showRegenerateButton = showRegenerateButton,
             onRegenerateClick = onRegenerateClick,
+            onThumbUpClick = onThumbUpClick,
+            onThumbDownClick = onThumbDownClick,
+            onMoreClick = onMoreClick,
             modifier = Modifier
                 .padding(end = if (isUserMe) 16.dp else 16.dp)
                 .widthIn(max = 300.dp)
@@ -273,7 +291,10 @@ fun AuthorAndTextMessage(
     modifier: Modifier = Modifier,
     isLastAssistantMessage: Boolean = false,
     showRegenerateButton: Boolean = false,
-    onRegenerateClick: () -> Unit = {}
+    onRegenerateClick: () -> Unit = {},
+    onThumbUpClick: () -> Unit = {},
+    onThumbDownClick: () -> Unit = {},
+    onMoreClick: () -> Unit = {}
 ) {
     Column(modifier = modifier) {
         if (isLastMessageByAuthor && !isUserMe) {
@@ -281,8 +302,13 @@ fun AuthorAndTextMessage(
         }
         ChatItemBubble(msg, isUserMe, authorClicked = authorClicked)
         
-        // 在最后一条助手消息下方显示重新生成图标
-        if (isLastAssistantMessage && showRegenerateButton && !isUserMe) {
+        // 在消息气泡底部显示操作按钮（水平并排）
+        // 排列顺序：复制 + 点赞 + 点踩 + 重新生成 + 更多操作
+        if (!isUserMe && msg.author != "System") {
+            val clipboardManager = LocalClipboardManager.current
+            val showCopyButton = isPureTextContent(msg.content) && msg.content.isNotEmpty()
+            val showRegenerate = isLastAssistantMessage && showRegenerateButton
+            
             Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier
@@ -290,14 +316,73 @@ fun AuthorAndTextMessage(
                     .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
                 horizontalArrangement = Arrangement.Start
             ) {
+                // 1. 复制按钮
+                if (showCopyButton) {
+                    IconButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(msg.content))
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "复制",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                
+                // 2. 点赞按钮
                 IconButton(
-                    onClick = onRegenerateClick,
+                    onClick = onThumbUpClick,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "重新生成",
-                        tint = MaterialTheme.colorScheme.primary,
+                        imageVector = Icons.Default.ThumbUp,
+                        contentDescription = "点赞",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                
+                // 3. 点踩按钮
+                IconButton(
+                    onClick = onThumbDownClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ThumbDown,
+                        contentDescription = "点踩",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                
+                // 4. 重新生成按钮（仅最后一条助手消息）
+                if (showRegenerate) {
+                    IconButton(
+                        onClick = onRegenerateClick,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "重新生成",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                
+                // 5. 更多操作按钮
+                IconButton(
+                    onClick = onMoreClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreHoriz,
+                        contentDescription = "更多操作",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -385,8 +470,6 @@ fun ChatItemBubble(
         else -> MaterialTheme.colorScheme.surfaceContainer // 淡灰色背景
     }
 
-    val clipboardManager = LocalClipboardManager.current
-
     Column {
         Surface(
             color = backgroundBubbleColor,
@@ -406,27 +489,6 @@ fun ChatItemBubble(
                     )
                 }
 
-                // 智能复制按钮 - 仅AI消息且为纯文本显示
-                // 错误信息气泡不展示复制按键
-                if (!isUserMe && message.author != "System" && isPureTextContent(message.content) && message.content.isNotEmpty()) {
-                //if (!isUserMe && isPureTextContent(message.content) && message.content.isNotEmpty()) {
-                    IconButton(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(message.content))
-                        },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(32.dp)
-                            .padding(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "复制",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
             }
         }
 
