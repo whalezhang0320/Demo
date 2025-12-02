@@ -173,14 +173,21 @@ class NavActivity : AppCompatActivity() {
                         },
                         onNewChatClicked = {
                             scope.launch {
-                                // 创建临时会话（仅在内存中，不保存到数据库）
-                                // 只有当用户发送第一条消息时，才会真正保存到数据库
-                                val sessionName = "新聊天"
-                                chatViewModel.createTemporarySession(sessionName)
-                                
+                                // 创建新会话，使用默认名称
+                                val sessionName = "New Chat"
+                                chatViewModel.createSession(sessionName)
+
+                                // createSession 是异步的，等待一下确保会话创建完成
+                                // 然后选择新会话以确保消息和草稿被正确初始化
+                                kotlinx.coroutines.delay(200)
+                                val newSession = chatViewModel.currentSession.value
+                                if (newSession != null) {
+                                    chatViewModel.selectSession(newSession)
+                                }
+
                                 // 导航到聊天页面
                                 findNavController().popBackStack(R.id.nav_home, false)
-                                
+
                                 // 关闭抽屉
                                 drawerState.close()
                             }

@@ -112,24 +112,24 @@ class ChatViewModel(
         }
     }
 
-    /**
-     * 创建临时session（仅在内存中，不保存到数据库）
-     * 只有当用户发送第一条消息时，才会真正保存到数据库
-     */
-    fun createTemporarySession(name: String) {
-        val session = SessionEntity(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis(),
-            pinned = false,
-            archived = false,
-            metadata = SessionMetadata()
-        )
-        _currentSession.value = session
-        // 临时session不加载草稿，因为还没有保存到数据库
-        _draft.value = null
-    }
+//    /**
+//     * 创建临时session（仅在内存中，不保存到数据库）
+//     * 只有当用户发送第一条消息时，才会真正保存到数据库
+//     */
+//    fun createTemporarySession(name: String) {
+//        val session = SessionEntity(
+//            id = UUID.randomUUID().toString(),
+//            name = name,
+//            createdAt = System.currentTimeMillis(),
+//            updatedAt = System.currentTimeMillis(),
+//            pinned = false,
+//            archived = false,
+//            metadata = SessionMetadata()
+//        )
+//        _currentSession.value = session
+//        // 临时session不加载草稿，因为还没有保存到数据库
+//        _draft.value = null
+//    }
 
     fun renameSession(newName: String) {
         viewModelScope.launch {
@@ -202,17 +202,17 @@ class ChatViewModel(
     fun sendMessage(content: String) {
         val session = _currentSession.value ?: return
         viewModelScope.launch {
-            // 检查session是否已保存到数据库（通过检查sessions列表中是否包含当前session）
-            var isSessionSaved = _sessions.value.any { it.id == session.id }
-            
-            // 如果session还未保存，先保存到数据库
-            if (!isSessionSaved) {
-                createSessionUseCase(session)
-                // 等待Flow更新，确保session被包含在列表中
-                // 使用first()等待sessions列表的下一次更新
-                getSessionListUseCase().first { list -> list.any { it.id == session.id } }
-                isSessionSaved = true
-            }
+//            // 检查session是否已保存到数据库（通过检查sessions列表中是否包含当前session）
+//            var isSessionSaved = _sessions.value.any { it.id == session.id }
+//
+//            // 如果session还未保存，先保存到数据库
+//            if (!isSessionSaved) {
+//                createSessionUseCase(session)
+//                // 等待Flow更新，确保session被包含在列表中
+//                // 使用first()等待sessions列表的下一次更新
+//                getSessionListUseCase().first { list -> list.any { it.id == session.id } }
+//                isSessionSaved = true
+//            }
             
             val message = MessageEntity(
                 id = UUID.randomUUID().toString(),
@@ -252,16 +252,20 @@ class ChatViewModel(
 
     fun saveDraft(content: String) {
         val session = _currentSession.value ?: return
+//        viewModelScope.launch {
+//            // 只有当session已保存到数据库时，才保存草稿
+//            val isSessionSaved = _sessions.value.any { it.id == session.id }
+//            if (isSessionSaved) {
+//                updateDraftUseCase(session.id, content)
+//                _draft.value = content
+//            } else {
+//                // 临时session的草稿只保存在内存中
+//                _draft.value = content
+//            }
+//        }
         viewModelScope.launch {
-            // 只有当session已保存到数据库时，才保存草稿
-            val isSessionSaved = _sessions.value.any { it.id == session.id }
-            if (isSessionSaved) {
-                updateDraftUseCase(session.id, content)
-                _draft.value = content
-            } else {
-                // 临时session的草稿只保存在内存中
-                _draft.value = content
-            }
+            updateDraftUseCase(session.id, content)
+            _draft.value = content
         }
     }
 
