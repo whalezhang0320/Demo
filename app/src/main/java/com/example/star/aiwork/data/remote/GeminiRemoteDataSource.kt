@@ -6,17 +6,19 @@ import com.example.star.aiwork.domain.model.ProviderSetting
 import kotlinx.coroutines.flow.Flow
 
 /**
- * 面向 data/remote 层的统一协议接口。
- * 负责与第三方 API 直接通信，并根据 Provider 类型路由到具体实现。
+ * 专门负责 Google Gemini 流式聊天的远程数据源。
+ *
+ * 注意：真正的网络与 SSE 细节在 infra 层的 HttpClient / SseClient 中实现，
+ * 这里仅负责构造请求与解析返回。
  */
-interface RemoteChatDataSource {
+interface GeminiRemoteDataSource {
+
     fun streamChat(
         history: List<ChatDataItem>,
-        providerSetting: ProviderSetting,
+        providerSetting: ProviderSetting.Google,
         params: TextGenerationParams,
         taskId: String
     ): Flow<String>
-
-    suspend fun cancelStreaming(taskId: String)
 }
+
 

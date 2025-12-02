@@ -420,7 +420,7 @@ fun ConversationPreview() {
         // For preview purposes, we create dummy instances of the dependencies.
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
-        
+
         val sseClient = SseClient()
         val remoteDataSource = StreamingChatRemoteDataSource(sseClient)
         val aiRepository = AiRepositoryImpl(remoteDataSource)
