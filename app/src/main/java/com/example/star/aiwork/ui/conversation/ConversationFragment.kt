@@ -35,7 +35,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.findNavController
 import com.example.star.aiwork.ui.MainViewModel
 import com.example.star.aiwork.R
-import com.example.star.aiwork.data.exampleUiState
 import com.example.star.aiwork.domain.model.MessageEntity
 import com.example.star.aiwork.domain.model.MessageRole
 import com.example.star.aiwork.ui.theme.JetchatTheme
@@ -78,6 +77,17 @@ class ConversationFragment : Fragment() {
                 val messagesFromDb by chatViewModel.messages.collectAsStateWithLifecycle()
                 val searchQuery by chatViewModel.searchQuery.collectAsStateWithLifecycle()
 
+                // 获取或创建当前会话的 UI 状态
+                val uiState = remember(currentSession?.id) {
+                    currentSession?.let { session ->
+                        chatViewModel.getOrCreateSessionUiState(session.id, session.name)
+                    } ?: ConversationUiState(
+                        channelName = "#composers",
+                        channelMembers = 1,
+                        initialMessages = emptyList()
+                    )
+                }
+
                 val sseClient = remember { SseClient() }
                 val remoteChatDataSource = remember { StreamingChatRemoteDataSource(sseClient) }
                 val aiRepository = remember { AiRepositoryImpl(remoteChatDataSource) }
@@ -100,11 +110,12 @@ class ConversationFragment : Fragment() {
                 }
 
                 val conversationLogic = remember(
-                    currentSession,
+                    currentSession?.id,
+                    uiState,
                     chatViewModel,
                 ) {
                     ConversationLogic(
-                        uiState = exampleUiState,
+                        uiState = uiState,
                         context = context,
                         authorMe = "me",
                         timeNow = "Now",
@@ -132,26 +143,32 @@ class ConversationFragment : Fragment() {
                     }
                 }
 
+                // 当会话或消息变化时，同步数据库消息到 UI 状态
                 LaunchedEffect(convertedMessages, currentSession?.id) {
-                    while (exampleUiState.messages.isNotEmpty()) {
-                        exampleUiState.removeFirstMessage()
-                    }
-                    convertedMessages.forEach { msg ->
-                        exampleUiState.addMessage(msg)
+                    currentSession?.let { session ->
+                        val sessionUiState = chatViewModel.getOrCreateSessionUiState(session.id, session.name)
+                        // 清空现有消息
+                        while (sessionUiState.messages.isNotEmpty()) {
+                            sessionUiState.removeFirstMessage()
+                        }
+                        // 添加数据库中的消息
+                        convertedMessages.forEach { msg ->
+                            sessionUiState.addMessage(msg)
+                        }
                     }
                 }
 
+                // 当会话名称变化时，更新 UI 状态的 channelName
                 LaunchedEffect(currentSession?.name, currentSession?.id) {
                     currentSession?.let { session ->
-                        exampleUiState.channelName = session.name.ifBlank { "新对话" }
-                    } ?: run {
-                        exampleUiState.channelName = "#composers"
+                        val sessionUiState = chatViewModel.getSessionUiState(session.id)
+                        sessionUiState?.channelName = session.name.ifBlank { "新对话" }
                     }
                 }
 
                 JetchatTheme {
                     ConversationContent(
-                        uiState = exampleUiState,
+                        uiState = uiState,
                         logic = conversationLogic,
                         navigateToProfile = { user ->
                             val bundle = bundleOf("userId" to user)

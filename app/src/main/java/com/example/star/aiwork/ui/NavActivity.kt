@@ -47,7 +47,6 @@ import com.example.star.aiwork.ui.components.DeleteSessionDialog
 import com.example.star.aiwork.ui.components.JetchatDrawer
 import com.example.star.aiwork.ui.components.RenameSessionDialog
 import com.example.star.aiwork.ui.conversation.ChatViewModel
-import com.example.star.aiwork.data.exampleUiState
 import com.example.star.aiwork.ui.conversation.Message
 import kotlinx.coroutines.launch
 
@@ -149,15 +148,17 @@ class NavActivity : AppCompatActivity() {
                             // 当点击 Agent 时，将其系统提示词作为系统消息添加到当前对话中
                             // 同时更新 UI 状态中的 activeAgent，以便后续请求带上此 Prompt
                             
-                            exampleUiState.addMessage(
-                                Message(
-                                    author = "System",
-                                    content = "Applied Agent: ${agent.name}\n${agent.systemPrompt}",
-                                    timestamp = "Now"
+                            currentSession?.let { session ->
+                                val uiState = chatViewModel.getOrCreateSessionUiState(session.id, session.name)
+                                uiState.addMessage(
+                                    Message(
+                                        author = "System",
+                                        content = "Applied Agent: ${agent.name}\n${agent.systemPrompt}",
+                                        timestamp = "Now"
+                                    )
                                 )
-                            )
-                            
-                            exampleUiState.activeAgent = agent
+                                uiState.activeAgent = agent
+                            }
                             
                             // 关闭抽屉并导航回聊天
                             findNavController().popBackStack(R.id.nav_home, false)
