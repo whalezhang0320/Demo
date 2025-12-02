@@ -443,7 +443,9 @@ fun ConversationPreview() {
             sessionId = "123",
             getProviderSettings = { emptyList() },
             persistenceGateway = persistenceGateway,
-            onRenameSession = { _, _ -> }
+            onRenameSession = { _, _ -> },
+            onPersistNewChatSession = { },
+            isNewChat = { false }
         )
 
         ConversationContent(

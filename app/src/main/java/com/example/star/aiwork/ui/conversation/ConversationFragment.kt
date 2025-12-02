@@ -101,6 +101,7 @@ class ConversationFragment : Fragment() {
 
                 val conversationLogic = remember(
                     currentSession,
+                    chatViewModel,
                 ) {
                     ConversationLogic(
                         uiState = exampleUiState,
@@ -115,6 +116,12 @@ class ConversationFragment : Fragment() {
                         persistenceGateway = messagePersistenceGateway,
                         onRenameSession = { sessionId, newName ->
                             chatViewModel.renameSession(sessionId, newName)
+                        },
+                        onPersistNewChatSession = { sessionId ->
+                            chatViewModel.persistNewChatSession(sessionId)
+                        },
+                        isNewChat = { sessionId ->
+                            chatViewModel.isNewChat(sessionId)
                         }
                     )
                 }

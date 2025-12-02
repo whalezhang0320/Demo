@@ -52,6 +52,10 @@ class ChatViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    // 跟踪临时创建的会话（isNewChat标记）
+    private val _newChatSessions = MutableStateFlow<Set<String>>(emptySet())
+    val newChatSessions: StateFlow<Set<String>> = _newChatSessions.asStateFlow()
+
     // 使用 flatMapLatest 自动根据 currentSession 切换消息流
     val messages: StateFlow<List<MessageEntity>> = _currentSession
         .flatMapLatest { session ->
@@ -128,6 +132,8 @@ class ChatViewModel(
         )
         _currentSession.value = session
         // 临时session不加载草稿，因为还没有保存到数据库
+        // 标记为新会话
+        _newChatSessions.value = _newChatSessions.value + session.id
         _draft.value = null
     }
 
@@ -277,6 +283,28 @@ class ChatViewModel(
         _currentSession.value = session
         // messages 会自动通过 flatMapLatest 加载，无需手动调用 loadMessages
         loadDraft()
+    }
+
+    /**
+     * 检查会话是否为新创建的临时会话
+     */
+    fun isNewChat(sessionId: String): Boolean {
+        return _newChatSessions.value.contains(sessionId)
+    }
+
+    /**
+     * 持久化新会话并取消isNewChat标记
+     */
+    suspend fun persistNewChatSession(sessionId: String) {
+        val session = _currentSession.value
+        if (session != null && session.id == sessionId && _newChatSessions.value.contains(sessionId)) {
+            // 持久化会话
+            createSessionUseCase(session)
+            // 更新会话列表
+            _sessions.value = _sessions.value + session
+            // 取消isNewChat标记
+            _newChatSessions.value = _newChatSessions.value - sessionId
+        }
     }
 
     companion object {
