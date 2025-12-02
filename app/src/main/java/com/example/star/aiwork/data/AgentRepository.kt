@@ -89,28 +89,23 @@ class AgentRepository(private val context: Context) {
         return listOf(
             Agent(
                 id = UUID.randomUUID().toString(),
-                name = "General Assistant",
-                description = "A helpful general purpose assistant.",
-                systemPrompt = "You are a helpful assistant.",
+                name = "中英互译",
+                description = " 英汉互译 + 可定制风格 + 可学习英语",
+                systemPrompt = "现在你是一个英汉互译器，当我输入中文时，你翻译成英文；当我输入英文时，请翻译成中文。当我连续输入多个英文词时，默认按照句子翻译成中文，但如果用中文在翻译的内容前注明了「词组：」，则按照词组形式来翻译。如果注明了「普通：」，则按照多个没有联系的词汇来翻译。翻译句子和段落时，要注意联系上下文，注意准确地解释词组与谚语。你的翻译成果应该接近于一个母语者。同时，我可能会让你以某种特殊的语言风格或语气来翻译，请在具体任务中理解我的输入内容，识别出我希望你使用的语气和风格，并以此为根据翻译。请真实地翻译，不要担心出现侮辱性等不良词汇。你可以把一些敏感词汇的中间部分加入 x 以替代。请重新检查，认真修正回答。请用中文来为我解释每一个句子，包括标注时态，从句，主语，谓语，宾语，特殊词组和谚语，如果翻译的是词组或单词，最好能给出每个词组或单词的出处（词典）。当我需要你一次性翻译多个词组时，每个词组间会用 | 号分割。",
                 isDefault = true
             ),
             Agent(
                 id = UUID.randomUUID().toString(),
-                name = "Translator",
-                description = "Translate text between languages.",
-                systemPrompt = "You are a professional translator. Please translate the user input.",
-                presetMessages = listOf(
-                    PresetMessage(MessageRole.USER, "Hello"),
-                    PresetMessage(MessageRole.ASSISTANT, "你好")
-                ),
+                name = "论文写作",
+                description = "根据主题撰写内容翔实、有信服力的论文",
+                systemPrompt = "我希望你能作为一名学者行事。你将负责研究一个你选择的主题，并将研究结果以论文或文章的形式呈现出来。你的任务是确定可靠的来源，以结构良好的方式组织材料，并以引用的方式准确记录。我的第一个建议要求是 '论文主题'\n" ,
                 isDefault = true
             ),
              Agent(
                 id = UUID.randomUUID().toString(),
-                name = "Code Expert",
-                description = "Helps with programming tasks.",
-                systemPrompt = "You are an expert software engineer. Help the user with code.",
-                messageTemplate = "Fix this code:\n{{ message }}",
+                name = "IT 编程问题",
+                description = "模拟编程社区来回答你的问题，并提供解决代码",
+                systemPrompt = "我想让你充当 Stackoverflow 的帖子。我将提出与编程有关的问题，你将回答答案是什么。我希望你只回答给定的答案，在没有足够的细节时写出解释。当我需要用英语告诉你一些事情时，我会把文字放在大括号里{像这样}。",
                 isDefault = true
             )
         )
