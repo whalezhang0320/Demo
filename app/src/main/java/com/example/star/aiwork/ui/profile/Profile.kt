@@ -77,7 +77,7 @@ fun ProfileScreen(
                     "Google" -> ProviderSetting.Google(
                         id = UUID.randomUUID().toString(),
                         name = "New Google",
-                        apiKey = "AIzaSyDH1C_727qItOKcydsvxXzdd_JBoGijVX0",
+                        apiKey = "",
                         baseUrl = "https://generativelanguage.googleapis.com/v1beta"
                     )
                     else -> null
