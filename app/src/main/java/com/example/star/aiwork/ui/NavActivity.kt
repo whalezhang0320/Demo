@@ -85,6 +85,7 @@ class NavActivity : AppCompatActivity() {
                     val agents by mainViewModel.agents.collectAsStateWithLifecycle()
                     val sessions by chatViewModel.sessions.collectAsStateWithLifecycle()
                     val currentSession by chatViewModel.currentSession.collectAsStateWithLifecycle()
+                    val knownKnowledgeBases by mainViewModel.knownKnowledgeBases.collectAsStateWithLifecycle()
 
                     // 记录当前选中的菜单项
                     var selectedMenu by remember { mutableStateOf("composers") }
@@ -118,6 +119,20 @@ class NavActivity : AppCompatActivity() {
                         }
                     }
 
+                    // 监听会话变化，恢复 Active Agent
+                    LaunchedEffect(currentSession, agents) {
+                        currentSession?.let { session ->
+                            val uiState = chatViewModel.getOrCreateSessionUiState(session.id, session.name)
+                            val savedAgentId = session.metadata.agentId
+                            if (savedAgentId != null) {
+                                val agent = agents.find { it.id == savedAgentId }
+                                if (agent != null) {
+                                    uiState.activeAgent = agent
+                                }
+                            }
+                        }
+                    }
+
                     // 协程作用域，用于处理 UI 事件中的挂起函数 (如关闭菜单)
                     val scope = rememberCoroutineScope()
 
@@ -127,6 +142,7 @@ class NavActivity : AppCompatActivity() {
                         selectedMenu = currentSession?.id ?: "",
                         agents = agents,
                         sessions = sessions,
+                        knownKnowledgeBases = knownKnowledgeBases,
                         onChatClicked = { sessionId ->
                             val session = sessions.find { it.id == sessionId }
                             if (session != null) {
@@ -158,10 +174,22 @@ class NavActivity : AppCompatActivity() {
                                     )
                                 )
                                 uiState.activeAgent = agent
+                                
+                                // 保存关联关系到数据库
+                                chatViewModel.updateSessionAgent(session.id, agent.id)
                             }
                             
                             // 关闭抽屉并导航回聊天
                             findNavController().popBackStack(R.id.nav_home, false)
+                            scope.launch {
+                                drawerState.close()
+                            }
+                        },
+                        onAgentDelete = { agent ->
+                            mainViewModel.removeAgent(agent.id)
+                        },
+                        onPromptMarketClicked = {
+                            findNavController().navigate(R.id.nav_market)
                             scope.launch {
                                 drawerState.close()
                             }
@@ -172,16 +200,26 @@ class NavActivity : AppCompatActivity() {
                                 drawerState.close()
                             }
                         },
+                        onDeleteKnowledgeBase = { filename ->
+                             mainViewModel.deleteKnowledgeBase(filename)
+                        },
                         onNewChatClicked = {
                             scope.launch {
-                                // 创建临时会话（仅在内存中，不保存到数据库）
-                                // 只有当用户发送第一条消息时，才会真正保存到数据库
-                                val sessionName = "新聊天"
-                                chatViewModel.createTemporarySession(sessionName)
-                                
+                                // 创建新会话，使用默认名称
+                                val sessionName = "New Chat"
+                                chatViewModel.createSession(sessionName)
+
+                                // createSession 是异步的，等待一下确保会话创建完成
+                                // 然后选择新会话以确保消息和草稿被正确初始化
+                                kotlinx.coroutines.delay(200)
+                                val newSession = chatViewModel.currentSession.value
+                                if (newSession != null) {
+                                    chatViewModel.selectSession(newSession)
+                                }
+
                                 // 导航到聊天页面
                                 findNavController().popBackStack(R.id.nav_home, false)
-                                
+
                                 // 关闭抽屉
                                 drawerState.close()
                             }

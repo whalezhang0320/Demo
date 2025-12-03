@@ -2,8 +2,6 @@ package com.example.star.aiwork.data
 
 import android.content.Context
 import com.example.star.aiwork.domain.model.Agent
-import com.example.star.aiwork.domain.model.MessageRole
-import com.example.star.aiwork.domain.model.PresetMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,28 +22,38 @@ class AgentRepository(private val context: Context) {
         File(dataDir, "agents.json")
     }
 
-    private val _agents = MutableStateFlow<List<Agent>>(emptyList())
+    // Use companion object to share state across instances since we don't have DI singleton
+    companion object {
+        private val _agents = MutableStateFlow<List<Agent>>(emptyList())
+        private var isLoaded = false
+    }
+    
     val agents: Flow<List<Agent>> = _agents.asStateFlow()
 
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
 
     suspend fun loadAgents() {
+        if (isLoaded && _agents.value.isNotEmpty()) return
+        
         withContext(Dispatchers.IO) {
             if (agentsFile.exists()) {
                 try {
                     val jsonString = agentsFile.readText()
                     val loadedAgents = json.decodeFromString(ListSerializer(Agent.serializer()), jsonString)
                     _agents.value = loadedAgents
+                    isLoaded = true
                 } catch (e: Exception) {
                     e.printStackTrace()
                     // If loading fails, potentially reset or keep empty
                     _agents.value = getDefaultAgents()
                     saveAgents(_agents.value)
+                    isLoaded = true
                 }
             } else {
                 // Initialize with default agents if file doesn't exist
                 _agents.value = getDefaultAgents()
                 saveAgents(_agents.value)
+                isLoaded = true
             }
         }
     }
@@ -69,9 +77,12 @@ class AgentRepository(private val context: Context) {
 
     suspend fun removeAgent(agentId: String) {
         val currentList = _agents.value.toMutableList()
-        currentList.removeAll { it.id == agentId }
-        _agents.value = currentList
-        saveAgents(currentList)
+        // Use removeAll instead of removeIf for better compatibility
+        val wasRemoved = currentList.removeAll { it.id == agentId }
+        if (wasRemoved) {
+            _agents.value = currentList
+            saveAgents(currentList)
+        }
     }
 
     private suspend fun saveAgents(agents: List<Agent>) {

@@ -6,10 +6,13 @@ import com.example.star.aiwork.data.local.db.ChatDatabase
 import com.example.star.aiwork.data.local.record.SessionRecord
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
 
     private val dbHelper = ChatDatabase(context)
+    private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun insertSession(session: SessionRecord) {
         val db = dbHelper.writableDatabase
@@ -20,6 +23,7 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
             put("updatedAt", session.updatedAt)
             put("pinned", if (session.pinned) 1 else 0)
             put("archived", if (session.archived) 1 else 0)
+            put("metadata", session.metadata) // 存储 JSON 字符串
         }
         db.insertWithOnConflict("sessions", null, values, 5 /* CONFLICT_REPLACE */)
     }
@@ -32,6 +36,7 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
             put("updatedAt", session.updatedAt)
             put("pinned", if (session.pinned) 1 else 0)
             put("archived", if (session.archived) 1 else 0)
+            put("metadata", session.metadata) // 存储 JSON 字符串
         }
         db.update("sessions", values, "id = ?", arrayOf(session.id))
     }
@@ -49,13 +54,19 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
         )
 
         val record = if (cursor.moveToFirst()) {
+            val metadataIndex = cursor.getColumnIndex("metadata")
+            val metadata = if (metadataIndex >= 0 && !cursor.isNull(metadataIndex)) {
+                cursor.getString(metadataIndex)
+            } else null
+
             SessionRecord(
                 id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
                 name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
                 createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("createdAt")),
                 updatedAt = cursor.getLong(cursor.getColumnIndexOrThrow("updatedAt")),
                 pinned = cursor.getInt(cursor.getColumnIndexOrThrow("pinned")) == 1,
-                archived = cursor.getInt(cursor.getColumnIndexOrThrow("archived")) == 1
+                archived = cursor.getInt(cursor.getColumnIndexOrThrow("archived")) == 1,
+                metadata = metadata
             )
         } else null
 
@@ -77,6 +88,11 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
 
         val list = mutableListOf<SessionRecord>()
         while (cursor.moveToNext()) {
+            val metadataIndex = cursor.getColumnIndex("metadata")
+            val metadata = if (metadataIndex >= 0 && !cursor.isNull(metadataIndex)) {
+                cursor.getString(metadataIndex)
+            } else null
+
             list.add(
                 SessionRecord(
                     id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
@@ -84,7 +100,8 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
                     createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("createdAt")),
                     updatedAt = cursor.getLong(cursor.getColumnIndexOrThrow("updatedAt")),
                     pinned = cursor.getInt(cursor.getColumnIndexOrThrow("pinned")) == 1,
-                    archived = cursor.getInt(cursor.getColumnIndexOrThrow("archived")) == 1
+                    archived = cursor.getInt(cursor.getColumnIndexOrThrow("archived")) == 1,
+                    metadata = metadata
                 )
             )
         }
@@ -114,6 +131,11 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
 
         val list = mutableListOf<SessionRecord>()
         while (cursor.moveToNext()) {
+            val metadataIndex = cursor.getColumnIndex("metadata")
+            val metadata = if (metadataIndex >= 0 && !cursor.isNull(metadataIndex)) {
+                cursor.getString(metadataIndex)
+            } else null
+
             list.add(
                 SessionRecord(
                     id = cursor.getString(cursor.getColumnIndexOrThrow("id")),
@@ -123,7 +145,8 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
                     createdAt = cursor.getLong(cursor.getColumnIndexOrThrow("createdAt")),
                     updatedAt = cursor.getLong(cursor.getColumnIndexOrThrow("updatedAt")),
                     pinned = cursor.getInt(cursor.getColumnIndexOrThrow("pinned")) == 1,
-                    archived = cursor.getInt(cursor.getColumnIndexOrThrow("archived")) == 1
+                    archived = cursor.getInt(cursor.getColumnIndexOrThrow("archived")) == 1,
+                    metadata = metadata
                 )
             )
         }

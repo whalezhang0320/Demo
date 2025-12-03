@@ -2,6 +2,7 @@ package com.example.star.aiwork.domain.service
 
 import android.util.Log
 import com.example.star.aiwork.data.database.LocalRAGService
+import com.example.star.aiwork.data.database.RetrievalResult
 import com.example.star.aiwork.domain.model.ChatDataItem
 
 /**
@@ -39,10 +40,14 @@ class LlmSession(
         Log.d("LlmSession", "Generating response for query: $query")
         
         // 如果启用了 RAG，先进行检索
-        val context = ragService?.retrieve(query) ?: ""
+        val retrievalResult = ragService?.retrieve(query) ?: RetrievalResult("", "")
+        val context = retrievalResult.context
+        
         val finalQuery = if (context.isNotBlank()) {
             """
-            请基于以下【参考资料】回答问题。如果参考资料中没有答案，请使用你自己的知识，但要说明。
+            请基于以下【参考资料】回答问题。
+            1. 如果参考资料中包含答案，请引用资料内容，并在句末标注来源，格式为 [文件名]。
+            2. 如果参考资料中没有答案，请使用你自己的知识，但这部分不需要标注来源。
             
             【参考资料】：
             $context
@@ -57,6 +62,13 @@ class LlmSession(
         // 模拟实现的虚拟实现。
         // 在实际应用中，这里会调用本地 LLM 引擎或 API。
         // TODO: 这里应该调用实际的模型推理接口，并传入 finalQuery
-        return "This is a simulated LLM response for session $sessionId: I received '$finalQuery'"
+        val response = "This is a simulated LLM response for session $sessionId: I received '$finalQuery'"
+        
+        // 将检索调试日志附加在最后，仅用于演示算法优越性
+        return if (retrievalResult.debugLog.isNotBlank()) {
+            "$response\n\n${retrievalResult.debugLog}"
+        } else {
+            response
+        }
     }
 }

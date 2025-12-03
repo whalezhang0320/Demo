@@ -14,6 +14,7 @@ import com.example.star.aiwork.domain.Provider
 import com.example.star.aiwork.domain.ImageGenerationParams
 import com.example.star.aiwork.domain.TextGenerationParams
 import com.example.star.aiwork.domain.model.Model
+import com.example.star.aiwork.domain.model.ModelType
 import com.example.star.aiwork.domain.model.ProviderSetting
 import com.example.star.aiwork.data.provider.openai.ChatCompletionsAPI
 import com.example.star.aiwork.data.provider.openai.ResponseAPI
@@ -92,9 +93,21 @@ class OpenAIProvider(
                 val modelObj = modelJson.jsonObject
                 val id = modelObj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
 
+                // 简单的规则：如果 ID 包含 "dall-e" 或 "image" 等关键词，则认为是图像生成模型
+                val type = if (id.contains("dall-e", ignoreCase = true) || 
+                               id.contains("image", ignoreCase = true) ||
+                               id.contains("kwai", ignoreCase = true) ||
+                               id.contains("kolors", ignoreCase = true) ||
+                               id.contains("flux", ignoreCase = true)) {
+                    ModelType.IMAGE
+                } else {
+                    ModelType.CHAT
+                }
+
                 Model(
                     modelId = id,
                     displayName = id,
+                    type = type
                 )
             }
         }
@@ -203,15 +216,22 @@ class OpenAIProvider(
             buildJsonObject {
                 put("model", params.model.modelId)
                 put("prompt", params.prompt)
-                put("n", params.numOfImages)
-                put("response_format", "b64_json") // 请求 Base64 编码的图片数据
-                put(
-                    "size", when (params.aspectRatio) {
-                        ImageAspectRatio.SQUARE -> "1024x1024"
-                        ImageAspectRatio.LANDSCAPE -> "1536x1024"
-                        ImageAspectRatio.PORTRAIT -> "1024x1536"
-                    }
-                )
+                if (params.numOfImages > 1) {
+                    put("n", params.numOfImages)
+                }
+                // 默认为 URL，以提高兼容性。
+                
+                // 只有 DALL-E 模型才强制添加 size 参数
+                // 其他模型（如 SiliconFlow 上的开源模型）可能不支持 size 或使用默认值
+                if (params.model.modelId.contains("dall-e", ignoreCase = true)) {
+                    put(
+                        "size", when (params.aspectRatio) {
+                            ImageAspectRatio.SQUARE -> "1024x1024"
+                            ImageAspectRatio.LANDSCAPE -> "1536x1024"
+                            ImageAspectRatio.PORTRAIT -> "1024x1536"
+                        }
+                    )
+                }
             }.mergeCustomBody(params.customBody)
         )
 
@@ -243,12 +263,21 @@ class OpenAIProvider(
         val items = data.map { imageJson ->
             val imageObj = imageJson.jsonObject
             val b64Json = imageObj["b64_json"]?.jsonPrimitive?.contentOrNull
-                ?: error("No b64_json in response")
+            val url = imageObj["url"]?.jsonPrimitive?.contentOrNull
 
-            ImageGenerationItem(
-                data = b64Json,
-                mimeType = "image/png"
-            )
+            if (b64Json != null) {
+                ImageGenerationItem(
+                    data = b64Json,
+                    mimeType = "image/png"
+                )
+            } else if (url != null) {
+                ImageGenerationItem(
+                    data = url,
+                    mimeType = "image/png"
+                )
+            } else {
+                error("No b64_json or url in response")
+            }
         }
 
         ImageGenerationResult(items = items)

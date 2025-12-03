@@ -103,7 +103,7 @@ class YoudaoWebSocket {
                                 Log.d(TAG, "✅ =========================================")
 
                                 if (sentence.isNotEmpty()) {
-                                    listener?.onTranscriptionReceived(sentence)
+                                    listener?.onTranscriptionReceived(sentence, !isPartial)
                                     Log.d(TAG, "📤 Sent result to listener")
                                 }
                             } else {
@@ -121,7 +121,7 @@ class YoudaoWebSocket {
                                     Log.d(TAG, "✅ Transcription: '$result'")
                                     Log.d(TAG, "✅ =========================================")
 
-                                    listener?.onTranscriptionReceived(result)
+                                    listener?.onTranscriptionReceived(result, isFinal)
                                     Log.d(TAG, "📤 Sent result to listener")
                                 } else {
                                      Log.w(TAG, "⚠️ Empty result received")
@@ -213,7 +213,7 @@ class YoudaoWebSocket {
      * 识别结果监听器
      */
     interface TranscriptionListener {
-        fun onTranscriptionReceived(text: String)
+        fun onTranscriptionReceived(text: String, isFinal: Boolean)
         fun onError(error: String)
     }
 

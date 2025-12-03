@@ -34,4 +34,9 @@
             app:argType="string" />
     </fragment>
 
+    <fragment
+        android:id="@+id/nav_market"
+        android:name="com.example.star.aiwork.ui.market.PromptMarketFragment"
+        android:label="Prompt Market" />
+
 </navigation>

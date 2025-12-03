@@ -187,11 +187,34 @@ class ChatViewModel(
         )
         _currentSession.value = session
         // 临时session不加载草稿，因为还没有保存到数据库
-        // 标记为新会话
-        _newChatSessions.value = _newChatSessions.value + session.id
-        // 创建临时会话的 UI 状态
-        getOrCreateSessionUiState(session.id, session.name)
         _draft.value = null
+    }
+    
+    /**
+     * 更新会话的关联 Agent
+     */
+    fun updateSessionAgent(sessionId: String, agentId: String?) {
+        viewModelScope.launch {
+            val session = if (_currentSession.value?.id == sessionId) {
+                _currentSession.value
+            } else {
+                // 如果不是当前会话，需要从列表中查找（或者从数据库重新加载，这里简化为查找当前列表）
+                _sessions.value.find { it.id == sessionId }
+            }
+
+            if (session != null) {
+                val newMetadata = session.metadata.copy(agentId = agentId)
+                val updatedSession = session.copy(metadata = newMetadata, updatedAt = System.currentTimeMillis())
+                
+                createSessionUseCase(updatedSession) // 使用 createSessionUseCase 进行更新 (upsert)
+                
+                if (_currentSession.value?.id == sessionId) {
+                    _currentSession.value = updatedSession
+                }
+                // 更新 UI State 中的 agent (由 NavActivity 观察并设置，但这里最好也触发一下)
+                // NavActivity 会监听 currentSession 的变化并处理 UI 更新
+            }
+        }
     }
 
     fun renameSession(newName: String) {
@@ -271,17 +294,17 @@ class ChatViewModel(
     fun sendMessage(content: String) {
         val session = _currentSession.value ?: return
         viewModelScope.launch {
-            // 检查session是否已保存到数据库（通过检查sessions列表中是否包含当前session）
-            var isSessionSaved = _sessions.value.any { it.id == session.id }
-            
-            // 如果session还未保存，先保存到数据库
-            if (!isSessionSaved) {
-                createSessionUseCase(session)
-                // 等待Flow更新，确保session被包含在列表中
-                // 使用first()等待sessions列表的下一次更新
-                getSessionListUseCase().first { list -> list.any { it.id == session.id } }
-                isSessionSaved = true
-            }
+//            // 检查session是否已保存到数据库（通过检查sessions列表中是否包含当前session）
+//            var isSessionSaved = _sessions.value.any { it.id == session.id }
+//
+//            // 如果session还未保存，先保存到数据库
+//            if (!isSessionSaved) {
+//                createSessionUseCase(session)
+//                // 等待Flow更新，确保session被包含在列表中
+//                // 使用first()等待sessions列表的下一次更新
+//                getSessionListUseCase().first { list -> list.any { it.id == session.id } }
+//                isSessionSaved = true
+//            }
             
             val message = MessageEntity(
                 id = UUID.randomUUID().toString(),
@@ -321,16 +344,20 @@ class ChatViewModel(
 
     fun saveDraft(content: String) {
         val session = _currentSession.value ?: return
+//        viewModelScope.launch {
+//            // 只有当session已保存到数据库时，才保存草稿
+//            val isSessionSaved = _sessions.value.any { it.id == session.id }
+//            if (isSessionSaved) {
+//                updateDraftUseCase(session.id, content)
+//                _draft.value = content
+//            } else {
+//                // 临时session的草稿只保存在内存中
+//                _draft.value = content
+//            }
+//        }
         viewModelScope.launch {
-            // 只有当session已保存到数据库时，才保存草稿
-            val isSessionSaved = _sessions.value.any { it.id == session.id }
-            if (isSessionSaved) {
-                updateDraftUseCase(session.id, content)
-                _draft.value = content
-            } else {
-                // 临时session的草稿只保存在内存中
-                _draft.value = content
-            }
+            updateDraftUseCase(session.id, content)
+            _draft.value = content
         }
     }
 

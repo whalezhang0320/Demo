@@ -7,9 +7,15 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
+
+data class RetrievalResult(
+    val context: String,
+    val debugLog: String
+)
 
 class LocalRAGService(private val context: Context, private val dao: KnowledgeDao) {
 
@@ -20,6 +26,8 @@ class LocalRAGService(private val context: Context, private val dao: KnowledgeDa
             Log.e("LocalRAGService", "Failed to init PDFBox", e)
         }
     }
+    
+    val knownFiles: Flow<List<String>> = dao.getDistinctSourceFilenames()
 
     // 1. 解析 PDF 并切片
     suspend fun indexPdf(uri: Uri) = withContext(Dispatchers.IO) {
@@ -42,12 +50,11 @@ class LocalRAGService(private val context: Context, private val dao: KnowledgeDa
             }
 
             // 使用 PDFBox 加载
-            // PDDocument.load(File) is generally more robust than load(InputStream) on Android
             val document = PDDocument.load(tempFile)
             
             try {
                 val stripper = PDFTextStripper()
-                stripper.sortByPosition = true // Ensure text is extracted in visual order
+                stripper.sortByPosition = true 
                 
                 // 提取全文
                 val fullText = stripper.getText(document)
@@ -74,7 +81,6 @@ class LocalRAGService(private val context: Context, private val dao: KnowledgeDa
         } catch (e: Exception) {
             Log.e("LocalRAGService", "Error indexing PDF", e)
         } finally {
-            // Clean up temp file
             try {
                 tempFile?.delete()
             } catch (e: Exception) {
@@ -82,9 +88,12 @@ class LocalRAGService(private val context: Context, private val dao: KnowledgeDa
             }
         }
     }
+    
+    suspend fun deleteKnowledgeBase(filename: String) {
+        dao.deleteBySourceFilename(filename)
+    }
 
     private fun splitTextIntoChunks(text: String, chunkSize: Int): List<String> {
-        // 改进的切片策略：先按段落（双换行）分割，再组合或切割
         val paragraphs = text.split(Regex("\\n\\s*\\n"))
         val chunks = mutableListOf<String>()
         var currentChunk = StringBuilder()
@@ -93,34 +102,27 @@ class LocalRAGService(private val context: Context, private val dao: KnowledgeDa
             val cleanedPara = paragraph.trim()
             if (cleanedPara.isEmpty()) continue
 
-            // 如果加上当前段落会超过限制
             if (currentChunk.length + cleanedPara.length > chunkSize) {
-                // 先保存当前累积的 Chunk
                 if (currentChunk.isNotEmpty()) {
                     chunks.add(currentChunk.toString().trim())
                     currentChunk = StringBuilder()
                 }
                 
-                // 如果单个段落本身就比 chunkSize 大，则强制切割
                 if (cleanedPara.length > chunkSize) {
                      cleanedPara.chunked(chunkSize).forEach { 
                          chunks.add(it)
                      }
                 } else {
-                    // 否则开始新的 Chunk
                     currentChunk.append(cleanedPara).append("\n\n")
                 }
             } else {
-                // 累积到当前 Chunk
                 currentChunk.append(cleanedPara).append("\n\n")
             }
         }
-        // 添加最后一个 Chunk
         if (currentChunk.isNotEmpty()) {
             chunks.add(currentChunk.toString().trim())
         }
         
-        // 如果上面的逻辑导致空列表（极端情况），回退到简单切分
         if (chunks.isEmpty() && text.isNotEmpty()) {
             return text.chunked(chunkSize)
         }
@@ -129,8 +131,6 @@ class LocalRAGService(private val context: Context, private val dao: KnowledgeDa
     }
     
     private fun getFileName(uri: Uri): String {
-        // 简单处理，实际可能需要查询 ContentResolver 获取真实文件名
-        // 为了演示，直接取最后的 path segment
         var result: String? = null
         if (uri.scheme == "content") {
             val cursor = context.contentResolver.query(uri, null, null, null, null)
@@ -155,42 +155,94 @@ class LocalRAGService(private val context: Context, private val dao: KnowledgeDa
         return result ?: "unknown_file.pdf"
     }
 
-    // 2. 检索
-    suspend fun retrieve(query: String): String {
-        if (query.isBlank()) return ""
+    // 2. 检索 (Recall + Re-rank)
+    suspend fun retrieve(query: String): RetrievalResult {
+        if (query.isBlank()) return RetrievalResult("", "")
         try {
-            // 处理查询词，将 "杭州 天气" 转换为 FTS 语法 "杭州* OR 天气*"
-            // 这里假设中文分词由 SQLite 的 simple tokenizer 处理（通常按字或空格）
-            // Android Room 默认 FTS4 simple tokenizer 只能按空格或符号分词。
-            // 对于中文，更好的做法是在存入前进行手动分词（如 "杭 州 天 气"），或者使用 ICU tokenizer (Android 自带需特定版本)。
-            // 这里为了简化，我们假设用户输入的 Query 包含空格，或者我们强制把每个字拆开（如果需要更细粒度）。
-            // 下面这种实现主要针对英文或已空格分隔的中文。
-            
+            // A. 预处理查询
             val ftsQuery = formatFtsQuery(query) 
-            Log.d("LocalRAGService", "Searching with FTS query: $ftsQuery")
             
-            val results = dao.search(ftsQuery)
+            // B. 召回 (Recall): 获取 Top 20 候选
+            // 注意：candidates 的顺序就是 FTS 认为的顺序 (基于 BM25 等)
+            val candidates = dao.search(ftsQuery)
             
-            if (results.isEmpty()) {
-                 Log.d("LocalRAGService", "No results found.")
-                 return ""
+            if (candidates.isEmpty()) {
+                 return RetrievalResult("", "No results found for query: $query")
             }
+
+            // C. 重排序 (Re-ranking): 内存中精细打分
+            val queryTerms = extractQueryTerms(query)
             
-            // 拼接上下文，去重
-            val context = results.distinctBy { it.content }.joinToString("\n\n---\n\n") { it.content }
-            return context
+            // 我们创建一个包含 (Chunk, Score, OriginalRank) 的列表
+            val scoredCandidates = candidates.mapIndexed { index, chunk ->
+                val score = calculateRelevanceScore(queryTerms, chunk.content)
+                Triple(chunk, score, index + 1) // index+1 是原始 FTS 排名
+            }
+
+            // 按照分数降序排序
+            val topResults = scoredCandidates
+                .sortedByDescending { it.second } 
+                .take(5)
+            
+            // D. 构建上下文 (Context Construction)
+            val context = topResults.map { it.first }
+                .distinctBy { it.content }
+                .joinToString("\n\n---\n\n") { chunk ->
+                    "【来源: ${chunk.sourceFilename}】\n${chunk.content}"
+                }
+
+            // E. 构建直观的分析日志 (Visual Debug Log)
+            val logBuilder = StringBuilder()
+            logBuilder.append("\n\n💡 [RAG 算法分析面板]\n")
+            logBuilder.append("--------------------------------------------------\n")
+            logBuilder.append("🔍 提取关键词: ${queryTerms.joinToString(", ")}\n")
+            logBuilder.append("📊 召回数量: ${candidates.size} (FTS), 精选: ${topResults.size} (Re-rank)\n\n")
+            
+            topResults.forEachIndexed { i, (chunk, score, originalRank) ->
+                val rankChange = if (originalRank > (i + 1)) "⬆️(原#$originalRank)" else "-(原#$originalRank)"
+                // 截取内容预览
+                val preview = chunk.content.replace("\n", " ").take(30) + "..."
+                
+                logBuilder.append("${i + 1}. [Score: ${"%.2f".format(score)}] $rankChange\n")
+                logBuilder.append("   📄 ${chunk.sourceFilename}\n")
+                logBuilder.append("   📝 \"$preview\"\n")
+            }
+            logBuilder.append("--------------------------------------------------")
+
+            // 打印日志到 Logcat
+            Log.d("LocalRAGService", logBuilder.toString())
+
+            return RetrievalResult(context, logBuilder.toString())
+
         } catch (e: Exception) {
             Log.e("LocalRAGService", "Error retrieving context", e)
-            return ""
+            return RetrievalResult("", "Error: ${e.message}")
         }
     }
     
     private fun formatFtsQuery(query: String): String {
-         // 将查询字符串拆分为单词，并为每个单词添加通配符 '*'
-         // 移除特殊字符以防 SQL 注入或语法错误
         val sanitized = query.replace(Regex("[^\\w\\s\\u4e00-\\u9fa5]"), " ")
         val words = sanitized.trim().split("\\s+".toRegex())
         return words.filter { it.isNotBlank() }.joinToString(" OR ") { "$it*" }
+    }
+
+    private fun extractQueryTerms(query: String): Set<String> {
+        return query.lowercase()
+            .split(Regex("[^a-zA-Z0-9\u4e00-\u9fa5]+"))
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    private fun calculateRelevanceScore(queryTerms: Set<String>, content: String): Double {
+        if (queryTerms.isEmpty()) return 0.0
+        val contentLower = content.lowercase()
+        
+        val matchedTermsCount = queryTerms.count { term ->
+            contentLower.contains(term)
+        }
+        
+        val coverage = matchedTermsCount.toDouble() / queryTerms.size
+        return coverage
     }
     
     suspend fun clearAll() {

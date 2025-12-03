@@ -6,5 +6,6 @@ data class SessionRecord(
     val createdAt: Long,
     val updatedAt: Long,
     val pinned: Boolean,
-    val archived: Boolean
+    val archived: Boolean,
+    val metadata: String? = null // 存储 JSON 格式的元数据
 )

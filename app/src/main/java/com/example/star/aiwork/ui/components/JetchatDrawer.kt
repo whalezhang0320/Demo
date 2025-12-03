@@ -37,9 +37,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -52,7 +56,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment.Companion.CenterStart
 import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
@@ -81,7 +88,10 @@ fun JetchatDrawer(
     onChatClicked: (String) -> Unit,
     onProfileClicked: (String) -> Unit,
     onAgentClicked: (Agent) -> Unit = {},
+    onAgentDelete: (Agent) -> Unit = {},
+    onPromptMarketClicked: () -> Unit = {},
     onImportPdfClicked: () -> Unit = {},
+    onDeleteKnowledgeBase: (String) -> Unit = {},
     onNewChatClicked: () -> Unit = {},
     onRenameSession: (String) -> Unit = {},
     onArchiveSession: (String) -> Unit = {},
@@ -89,6 +99,7 @@ fun JetchatDrawer(
     onDeleteSession: (String) -> Unit = {},
     agents: List<Agent> = emptyList(),
     sessions: List<SessionEntity> = emptyList(),
+    knownKnowledgeBases: List<String> = emptyList(),
     selectedMenu: String = "",
     content: @Composable () -> Unit,
 ) {
@@ -101,7 +112,10 @@ fun JetchatDrawer(
                         onProfileClicked = onProfileClicked,
                         onChatClicked = onChatClicked,
                         onAgentClicked = onAgentClicked,
+                        onAgentDelete = onAgentDelete,
+                        onPromptMarketClicked = onPromptMarketClicked,
                         onImportPdfClicked = onImportPdfClicked,
+                        onDeleteKnowledgeBase = onDeleteKnowledgeBase,
                         onNewChatClicked = onNewChatClicked,
                         onRenameSession = onRenameSession,
                         onArchiveSession = onArchiveSession,
@@ -109,6 +123,7 @@ fun JetchatDrawer(
                         onDeleteSession = onDeleteSession,
                         agents = agents,
                         sessions = sessions,
+                        knownKnowledgeBases = knownKnowledgeBases,
                         selectedMenu = selectedMenu
                     )
                 }
@@ -139,7 +154,10 @@ fun JetchatDrawerContent(
     onProfileClicked: (String) -> Unit, 
     onChatClicked: (String) -> Unit, 
     onAgentClicked: (Agent) -> Unit,
+    onAgentDelete: (Agent) -> Unit,
+    onPromptMarketClicked: () -> Unit,
     onImportPdfClicked: () -> Unit,
+    onDeleteKnowledgeBase: (String) -> Unit,
     onNewChatClicked: () -> Unit,
     onRenameSession: (String) -> Unit,
     onArchiveSession: (String) -> Unit,
@@ -147,12 +165,16 @@ fun JetchatDrawerContent(
     onDeleteSession: (String) -> Unit,
     agents: List<Agent>,
     sessions: List<SessionEntity>,
+    knownKnowledgeBases: List<String>,
     selectedMenu: String
 ) {
     // 使用 windowInsetsTopHeight() 添加一个 Spacer，将抽屉内容向下推
     // 以避开状态栏 (Status Bar) 区域
     // 使用 verticalScroll 使内容可滚动，确保所有会话都能访问
     val scrollState = rememberScrollState()
+    var isAgentsExpanded by remember { mutableStateOf(false) }
+    var isKnowledgeExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier.verticalScroll(scrollState)
     ) {
@@ -162,12 +184,20 @@ fun JetchatDrawerContent(
         NewChatItem(onNewChatClicked = onNewChatClicked)
         DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
         DrawerItemHeader("角色市场")
-        agents.forEach { agent ->
-            AgentItem(
-                agent = agent,
-                selected = false, // Can be updated to track selection
-                onAgentClicked = { onAgentClicked(agent) }
-            )
+        MarketItem(onPromptMarketClicked)
+        
+        if (agents.isNotEmpty()) {
+             CollapsibleDrawerItemHeader("我的智能体", isAgentsExpanded) { isAgentsExpanded = !isAgentsExpanded }
+             if (isAgentsExpanded) {
+                agents.forEach { agent ->
+                    AgentItem(
+                        agent = agent,
+                        selected = false, // Can be updated to track selection
+                        onAgentClicked = { onAgentClicked(agent) },
+                        onAgentDelete = { onAgentDelete(agent) }
+                    )
+                }
+             }
         }
 
         DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
@@ -177,6 +207,18 @@ fun JetchatDrawerContent(
             false
         ) {
             onImportPdfClicked()
+        }
+        
+        if (knownKnowledgeBases.isNotEmpty()) {
+            CollapsibleDrawerItemHeader("已导入知识库", isKnowledgeExpanded) { isKnowledgeExpanded = !isKnowledgeExpanded }
+            if (isKnowledgeExpanded) {
+                knownKnowledgeBases.forEach { filename ->
+                    KnowledgeBaseItem(
+                        filename = filename,
+                        onDelete = { onDeleteKnowledgeBase(filename) }
+                    )
+                }
+            }
         }
 
         DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
@@ -285,6 +327,35 @@ private fun DrawerItemHeader(text: String) {
     }
 }
 
+@Composable
+private fun CollapsibleDrawerItemHeader(
+    text: String,
+    isExpanded: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .heightIn(min = 32.dp)
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 28.dp, vertical = 4.dp),
+        verticalAlignment = CenterVertically,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Icon(
+            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = if (isExpanded) "Collapse" else "Expand",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
 /**
  * 新建聊天项组件。
  *
@@ -311,6 +382,37 @@ private fun NewChatItem(onNewChatClicked: () -> Unit) {
             "新聊天",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 12.dp),
+        )
+    }
+}
+
+/**
+ * 角色广场项组件。
+ *
+ * @param onClick 点击回调。
+ */
+@Composable
+private fun MarketItem(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .height(56.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        verticalAlignment = CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Default.ShoppingCart,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 16.dp),
+            contentDescription = null,
+        )
+        Text(
+            "角色广场",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(start = 12.dp),
         )
     }
@@ -384,7 +486,12 @@ private fun ChatItem(
  * Agent 列表项组件。
  */
 @Composable
-private fun AgentItem(agent: Agent, selected: Boolean, onAgentClicked: () -> Unit) {
+private fun AgentItem(
+    agent: Agent,
+    selected: Boolean,
+    onAgentClicked: () -> Unit,
+    onAgentDelete: () -> Unit
+) {
     val background = if (selected) {
         Modifier.background(MaterialTheme.colorScheme.primaryContainer)
     } else {
@@ -411,7 +518,10 @@ private fun AgentItem(agent: Agent, selected: Boolean, onAgentClicked: () -> Uni
             modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 16.dp),
             contentDescription = null,
         )
-        Column(modifier = Modifier.padding(start = 12.dp)) {
+        Column(modifier = Modifier
+            .padding(start = 12.dp)
+            .weight(1f)
+        ) {
              Text(
                 text = agent.name,
                 style = MaterialTheme.typography.bodyMedium,
@@ -428,7 +538,16 @@ private fun AgentItem(agent: Agent, selected: Boolean, onAgentClicked: () -> Uni
                 maxLines = 1
             )
         }
-       
+        
+        if (!agent.isDefault) {
+            IconButton(onClick = onAgentDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    contentDescription = "Delete Agent"
+                )
+            }
+        }
     }
 }
 
@@ -514,6 +633,49 @@ private fun KnowledgeItem(text: String, selected: Boolean = false, onClick: () -
     }
 }
 
+@Composable
+private fun KnowledgeBaseItem(
+    filename: String,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .height(48.dp) // Slightly smaller than main items
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp), // More indented
+        verticalAlignment = CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Description,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+            contentDescription = null,
+        )
+        
+        Text(
+            text = filename,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .padding(start = 12.dp)
+                .weight(1f),
+            maxLines = 1
+        )
+        
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Delete,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+                contentDescription = "Delete Knowledge Base"
+            )
+        }
+    }
+}
+
 /**
  * 分隔线组件。
  */
@@ -538,7 +700,10 @@ fun DrawerPreview() {
                     onProfileClicked = {},
                     onChatClicked = {},
                     onAgentClicked = {},
+                    onAgentDelete = {},
+                    onPromptMarketClicked = {},
                     onImportPdfClicked = {},
+                    onDeleteKnowledgeBase = {},
                     onNewChatClicked = {},
                     onRenameSession = {},
                     onArchiveSession = {},
@@ -546,6 +711,7 @@ fun DrawerPreview() {
                     onDeleteSession = {},
                     agents = emptyList(),
                     sessions = emptyList(),
+                    knownKnowledgeBases = listOf("doc1.pdf", "report_final.pdf"),
                     selectedMenu = ""
                 )
             }
@@ -566,7 +732,10 @@ fun DrawerPreviewDark() {
                     onProfileClicked = {},
                     onChatClicked = {},
                     onAgentClicked = {},
+                    onAgentDelete = {},
+                    onPromptMarketClicked = {},
                     onImportPdfClicked = {},
+                    onDeleteKnowledgeBase = {},
                     onNewChatClicked = {},
                     onRenameSession = {},
                     onArchiveSession = {},
@@ -574,10 +743,10 @@ fun DrawerPreviewDark() {
                     onDeleteSession = {},
                     agents = emptyList(),
                     sessions = emptyList(),
+                    knownKnowledgeBases = listOf("doc1.pdf", "report_final.pdf"),
                     selectedMenu = ""
                 )
             }
         }
     }
 }
-

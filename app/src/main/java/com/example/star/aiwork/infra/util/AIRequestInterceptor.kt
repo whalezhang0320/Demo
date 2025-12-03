@@ -57,7 +57,7 @@ class AIRequestInterceptor : Interceptor {
                                      authHeader.trim() == "Bearer sk-" ||
                                      authHeader.contains(invalidatedFallbackApiKey)
 
-        if (isAuthMissingOrInvalid && path in listOf("/v1/chat/completions", "/v1/models")) {
+        if (isAuthMissingOrInvalid && path in listOf("/v1/chat/completions", "/v1/models", "/v1/images/generations")) {
             // 读取请求体以获取请求的模型名称
             val bodyJson = request.readBodyAsJson()
             val model = bodyJson?.jsonObject?.get("model")?.jsonPrimitive?.content

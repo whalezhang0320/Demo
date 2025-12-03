@@ -1,8 +1,10 @@
 package com.example.star.aiwork.data.repository
 
+import com.example.star.aiwork.domain.ImageGenerationParams
 import com.example.star.aiwork.domain.TextGenerationParams
 import com.example.star.aiwork.domain.model.ChatDataItem
 import com.example.star.aiwork.domain.model.ProviderSetting
+import com.example.star.aiwork.ui.ai.ImageGenerationResult
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -18,5 +20,9 @@ interface AiRepository {
     ): Flow<String>
 
     suspend fun cancelStreaming(taskId: String)
-}
 
+    suspend fun generateImage(
+        providerSetting: ProviderSetting,
+        params: ImageGenerationParams
+    ): ImageGenerationResult
+}

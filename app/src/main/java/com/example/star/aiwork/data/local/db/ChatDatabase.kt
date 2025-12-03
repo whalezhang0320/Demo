@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 class ChatDatabase(context: Context) :
-    SQLiteOpenHelper(context, "chat_app.db", null, 1) {
+    SQLiteOpenHelper(context, "chat_app.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         // 会话表
@@ -16,7 +16,8 @@ class ChatDatabase(context: Context) :
                 createdAt INTEGER,
                 updatedAt INTEGER,
                 pinned INTEGER,
-                archived INTEGER
+                archived INTEGER,
+                metadata TEXT
             )
         """)
 
@@ -44,6 +45,8 @@ class ChatDatabase(context: Context) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // 后续版本升级使用
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE sessions ADD COLUMN metadata TEXT")
+        }
     }
 }

@@ -126,6 +126,13 @@ class MainViewModel(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = null
         )
+        
+    val knownKnowledgeBases: StateFlow<List<String>> = ragService.knownFiles
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     init {
         viewModelScope.launch {
@@ -218,11 +225,17 @@ class MainViewModel(
         }
     }
     
+    fun deleteKnowledgeBase(filename: String) {
+        viewModelScope.launch {
+            ragService.deleteKnowledgeBase(filename)
+        }
+    }
+    
     /**
      * 检索知识库中的相关上下文
      */
     suspend fun retrieveKnowledge(query: String): String {
-        return ragService.retrieve(query)
+        return ragService.retrieve(query).context
     }
 
     /**
