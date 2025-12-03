@@ -414,6 +414,8 @@ class ConversationLogic(
                 var fullResponse = ""
                 var lastUpdateTime = 0L
                 val UPDATE_INTERVAL_MS = 500L
+                var hasShownSlowLoadingHint = false // 标记是否已显示慢加载提示
+                var hintTypingJob: Job? = null // 提示消息的流式显示协程
 
                 // 无论流式还是非流式，都从 stream 收集响应
                 // 在独立的协程中运行流式收集，以便可以立即取消
@@ -428,6 +430,25 @@ class ConversationLogic(
                                 if (uiState.streamResponse && delta.isNotEmpty()) {
                                     uiState.updateLastMessageLoadingState(false)
                                 }
+
+                                // 非流式模式下，第一次收到数据时流式显示慢加载提示
+                                // 注意：提示上方需要保持加载图标，所以添加提示后要恢复加载状态
+                                if (!uiState.streamResponse && delta.isNotEmpty() && !hasShownSlowLoadingHint) {
+                                    hasShownSlowLoadingHint = true
+                                    val hintText = "加载较慢？试试流式输出~"
+                                    // 启动协程来流式显示提示消息
+                                    hintTypingJob = streamingScope.launch {
+                                        for (char in hintText) {
+                                            withContext(Dispatchers.Main) {
+                                                uiState.appendToLastMessage(char.toString())
+                                                // 恢复加载状态，确保提示上方显示加载图标
+                                                uiState.updateLastMessageLoadingState(true)
+                                            }
+                                            delay(30L) // 每个字符延迟50ms，营造打字机效果
+                                        }
+                                    }
+                                }
+
                                 // 流式响应时逐字显示，非流式响应时一次性显示
                                 if (uiState.streamResponse) {
                                     uiState.appendToLastMessage(delta)
@@ -491,12 +512,17 @@ class ConversationLogic(
                     throw e
                 }
                 
+                // 等待提示消息的流式显示完成（如果正在显示）
+                hintTypingJob?.join()
+                hintTypingJob = null
+                
                 // 流式响应结束后，如果是非流式模式，一次性显示完整内容
                 // 但如果已被取消，则不显示已收集的内容（cancelStreaming 已经处理了）
                 withContext(Dispatchers.Main) {
                     if (!uiState.streamResponse && fullResponse.isNotBlank() && !isCancelled) {
                         uiState.updateLastMessageLoadingState(false)
-                        uiState.appendToLastMessage(fullResponse)
+                        // 直接替换消息内容，这样会自动移除之前添加的慢加载提示
+                        uiState.replaceLastMessageContent(fullResponse)
                     }
                     // 响应结束后，设置生成状态为 false
                     uiState.isGenerating = false
@@ -728,6 +754,8 @@ class ConversationLogic(
                     var fullResponse = ""
                     var lastUpdateTime = 0L
                     val UPDATE_INTERVAL_MS = 500L
+                    var hasShownSlowLoadingHint = false // 标记是否已显示慢加载提示
+                    var hintTypingJob: Job? = null // 提示消息的流式显示协程
 
                     // 收集流式响应，在独立的协程中运行以便可以立即取消
                     streamingJob = streamingScope.launch {
@@ -740,6 +768,25 @@ class ConversationLogic(
                                     if (uiState.streamResponse && delta.isNotEmpty()) {
                                         uiState.updateLastMessageLoadingState(false)
                                     }
+                                    
+                                    // 非流式模式下，第一次收到数据时流式显示慢加载提示
+                                    // 注意：提示上方需要保持加载图标，所以添加提示后要恢复加载状态
+                                    if (!uiState.streamResponse && delta.isNotEmpty() && !hasShownSlowLoadingHint) {
+                                        hasShownSlowLoadingHint = true
+                                        val hintText = "加载较慢？试试流式输出~"
+                                        // 启动协程来流式显示提示消息
+                                        hintTypingJob = streamingScope.launch {
+                                            for (char in hintText) {
+                                                withContext(Dispatchers.Main) {
+                                                    uiState.appendToLastMessage(char.toString())
+                                                    // 恢复加载状态，确保提示上方显示加载图标
+                                                    uiState.updateLastMessageLoadingState(true)
+                                                }
+                                                delay(50L) // 每个字符延迟50ms，营造打字机效果
+                                            }
+                                        }
+                                    }
+                                    
                                     // 流式响应时逐字显示
                                     if (uiState.streamResponse) {
                                         uiState.appendToLastMessage(delta)
@@ -774,12 +821,17 @@ class ConversationLogic(
                     }
                     streamingJob = null
 
+                    // 等待提示消息的流式显示完成（如果正在显示）
+                    hintTypingJob?.join()
+                    hintTypingJob = null
+
                     // 流式响应结束后，如果是非流式模式，一次性显示完整内容
                     // 但如果已被取消，则不显示已收集的内容（cancelStreaming 已经处理了）
                     withContext(Dispatchers.Main) {
                         if (!uiState.streamResponse && fullResponse.isNotBlank() && !isCancelled) {
                             uiState.updateLastMessageLoadingState(false)
-                            uiState.appendToLastMessage(fullResponse)
+                            // 直接替换消息内容，这样会自动移除之前添加的慢加载提示
+                            uiState.replaceLastMessageContent(fullResponse)
                         }
                         uiState.isGenerating = false
                     }

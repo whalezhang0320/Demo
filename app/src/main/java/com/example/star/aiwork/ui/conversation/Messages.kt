@@ -481,13 +481,14 @@ fun ChatItemBubble(
             color = backgroundBubbleColor,
             shape = ChatBubbleShape,
         ) {
-            Box {
+            Column {
                 // 消息内容
-                if (message.isLoading && message.content.isEmpty()) {
+                if (message.isLoading) {
                     // 加载动画
                     LoadingIndicator()
-                } else {
-                    // Markdown渲染的消息内容
+                }
+
+                if (message.content.isNotEmpty()){
                     MarkdownMessage(
                         message = message,
                         isUserMe = isUserMe,
