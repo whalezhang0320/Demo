@@ -1,14 +1,19 @@
 package com.example.star.aiwork.data.repository
 
+import com.example.star.aiwork.data.provider.ProviderFactory
 import com.example.star.aiwork.data.remote.StreamingChatRemoteDataSource
+import com.example.star.aiwork.domain.ImageGenerationParams
 import com.example.star.aiwork.domain.TextGenerationParams
 import com.example.star.aiwork.domain.model.ChatDataItem
 import com.example.star.aiwork.domain.model.ProviderSetting
+import com.example.star.aiwork.ui.ai.ImageGenerationResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import okhttp3.OkHttpClient
 
 class AiRepositoryImpl(
-    private val remoteChatDataSource: StreamingChatRemoteDataSource
+    private val remoteChatDataSource: StreamingChatRemoteDataSource,
+    private val okHttpClient: OkHttpClient
 ) : AiRepository {
 
     override fun streamChat(
@@ -24,6 +29,14 @@ class AiRepositoryImpl(
 
     override suspend fun cancelStreaming(taskId: String) {
         remoteChatDataSource.cancelStreaming(taskId)
+    }
+
+    override suspend fun generateImage(
+        providerSetting: ProviderSetting,
+        params: ImageGenerationParams
+    ): ImageGenerationResult {
+        val provider = ProviderFactory.getProvider(providerSetting, okHttpClient)
+        return provider.generateImage(providerSetting, params)
     }
 
     /**

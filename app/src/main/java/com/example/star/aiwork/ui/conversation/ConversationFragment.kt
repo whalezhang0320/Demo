@@ -48,10 +48,12 @@ import com.example.star.aiwork.data.repository.MessageRepositoryImpl
 import com.example.star.aiwork.data.repository.SessionRepositoryImpl
 import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
 import com.example.star.aiwork.data.local.datasource.SessionLocalDataSourceImpl
+import com.example.star.aiwork.domain.usecase.ImageGenerationUseCase
 import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
 import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
 import com.example.star.aiwork.domain.usecase.SendMessageUseCase
 import com.example.star.aiwork.infra.network.SseClient
+import com.example.star.aiwork.infra.network.defaultOkHttpClient
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -92,9 +94,10 @@ class ConversationFragment : Fragment() {
                     )
                 }
 
-                val sseClient = remember { SseClient() }
+                val okHttpClient = remember { defaultOkHttpClient() }
+                val sseClient = remember { SseClient(okHttpClient) }
                 val remoteChatDataSource = remember { StreamingChatRemoteDataSource(sseClient) }
-                val aiRepository = remember { AiRepositoryImpl(remoteChatDataSource) }
+                val aiRepository = remember { AiRepositoryImpl(remoteChatDataSource, okHttpClient) }
 
                 val messageRepository = remember(context) {
                     val messageLocalDataSource = MessageLocalDataSourceImpl(context)
@@ -116,6 +119,9 @@ class ConversationFragment : Fragment() {
                 val rollbackMessageUseCase = remember(aiRepository) {
                     RollbackMessageUseCase(aiRepository, messagePersistenceGateway)
                 }
+                val imageGenerationUseCase = remember(aiRepository) {
+                    ImageGenerationUseCase(aiRepository)
+                }
 
                 val conversationLogic = remember(
                     currentSession?.id,
@@ -130,6 +136,7 @@ class ConversationFragment : Fragment() {
                         sendMessageUseCase = sendMessageUseCase,
                         pauseStreamingUseCase = pauseStreamingUseCase,
                         rollbackMessageUseCase = rollbackMessageUseCase,
+                        imageGenerationUseCase = imageGenerationUseCase,
                         sessionId = currentSession?.id ?: UUID.randomUUID().toString(),
                         getProviderSettings = { providerSettings },
                         persistenceGateway = messagePersistenceGateway,

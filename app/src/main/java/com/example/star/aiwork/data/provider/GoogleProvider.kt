@@ -4,14 +4,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import com.example.star.aiwork.domain.Provider
 import com.example.star.aiwork.domain.ImageGenerationParams
 import com.example.star.aiwork.domain.TextGenerationParams
 import com.example.star.aiwork.domain.model.Model
+import com.example.star.aiwork.domain.model.ModelType
 import com.example.star.aiwork.domain.model.ProviderSetting
 import com.example.star.aiwork.domain.model.MessageRole
+import com.example.star.aiwork.ui.ai.ImageAspectRatio
+import com.example.star.aiwork.ui.ai.ImageGenerationItem
 import com.example.star.aiwork.ui.ai.ImageGenerationResult
 import com.example.star.aiwork.ui.ai.MessageChunk
 import com.example.star.aiwork.ui.ai.UIMessage
@@ -21,6 +23,7 @@ import com.example.star.aiwork.infra.util.KeyRoulette
 import com.example.star.aiwork.infra.util.configureClientWithProxy
 import com.example.star.aiwork.infra.util.json
 import com.example.star.aiwork.infra.util.await
+import com.example.star.aiwork.infra.util.toBase64
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -67,7 +70,7 @@ class GoogleProvider(
             }
 
             val bodyStr = response.body?.string() ?: return@withContext emptyList()
-            
+
             try {
                 val jsonElement = json.parseToJsonElement(bodyStr).jsonObject
                 val modelsArray = jsonElement["models"]?.jsonArray ?: return@withContext emptyList()
@@ -77,23 +80,29 @@ class GoogleProvider(
                     // name 格式通常为 "models/gemini-1.5-flash"
                     val name = modelObj["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
                     val displayName = modelObj["displayName"]?.jsonPrimitive?.contentOrNull ?: name
-                    val supportedMethods = modelObj["supportedGenerationMethods"]?.jsonArray?.map { 
-                        it.jsonPrimitive.content 
+                    val supportedMethods = modelObj["supportedGenerationMethods"]?.jsonArray?.map {
+                        it.jsonPrimitive.content
                     } ?: emptyList()
 
-                    // 过滤：只保留支持 generateContent 的模型（排除 embedding 模型等）
-                    if (supportedMethods.contains("generateContent")) {
-                        // 去掉 "models/" 前缀，以便在调用 API 时直接使用 ID（虽然 API 接受带前缀的，但为了 UI 简洁）
-                        // 注意：调用 API 时如果只传 ID，Google 客户端库通常会自动处理，
-                        // 但直接 HTTP 调用时，有些端点需要 "models/" 前缀，有些不需要。
-                        // 我们的 streamText 实现中是拼接 "$baseUrl/models/$modelId..."
-                        // 如果 modelId 已经是 "models/gemini-pro"，拼接后变成 ".../models/models/gemini-pro" 可能会错
-                        // 所以这里我们剥离前缀，确保 modelId 是纯 ID (如 "gemini-1.5-flash")
+                    // 识别是否为图像生成模型
+                    // 通常 Imagen 模型名称包含 "imagen"
+                    val isImageModel = name.contains("image", ignoreCase = true)
+
+                    // 过滤：保留支持 generateContent 的模型 (Chat) 或者看起来像图像生成模型的
+                    if (supportedMethods.contains("generateContent") || isImageModel) {
+                        // 去掉 "models/" 前缀，以便在调用 API 时直接使用 ID
                         val cleanId = if (name.startsWith("models/")) name.substring(7) else name
-                        
+
+                        val type = if (isImageModel) {
+                            ModelType.IMAGE
+                        } else {
+                            ModelType.CHAT
+                        }
+
                         Model(
                             modelId = cleanId,
-                            displayName = displayName
+                            displayName = displayName,
+                            type = type
                         )
                     } else {
                         null
@@ -117,7 +126,7 @@ class GoogleProvider(
     ): MessageChunk {
         val sb = StringBuilder()
         var finishReason: String? = null
-        
+
         // 收集流式结果
         streamText(providerSetting, messages, params).collect { chunk ->
             chunk.choices.firstOrNull()?.delta?.parts?.forEach { part ->
@@ -130,9 +139,9 @@ class GoogleProvider(
                 finishReason = reason
             }
         }
-        
+
         val content = sb.toString()
-        
+
         // 构造完整的 MessageChunk，仿照 OllamaProvider.generateText 的返回结构
         return MessageChunk(
             id = UUID.randomUUID().toString(),
@@ -177,7 +186,7 @@ class GoogleProvider(
         val response = client.configureClientWithProxy(providerSetting.proxy)
             .newCall(request)
             .await()
-        
+
         if (!response.isSuccessful) {
             val errorBody = response.body?.string()
             error("Google API error: ${response.code} $errorBody")
@@ -193,28 +202,28 @@ class GoogleProvider(
                 if (line.startsWith("data: ")) {
                     val data = line.substring(6).trim()
                     if (data == "[DONE]") break
-                    
+
                     try {
                         val jsonElement = json.parseToJsonElement(data).jsonObject
-                        
+
                         // 解析 Google 响应结构
                         val candidates = jsonElement["candidates"]?.jsonArray
                         val candidate = candidates?.firstOrNull()?.jsonObject
-                        
+
                         // 提取文本内容
                         val parts = candidate?.get("content")?.jsonObject?.get("parts")?.jsonArray
                         val text = parts?.firstOrNull()?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
-                        
+
                         // 提取结束原因
                         val finishReason = candidate?.get("finishReason")?.jsonPrimitive?.contentOrNull
-                        
+
                         if (!text.isNullOrEmpty() || finishReason != null) {
                             // 构造 delta 消息
                             val deltaMessage = UIMessage(
                                 role = MessageRole.ASSISTANT,
                                 parts = if (!text.isNullOrEmpty()) listOf(UIMessagePart.Text(text)) else emptyList()
                             )
-                            
+
                             // 发射 Chunk，结构与 OllamaProvider.streamText 一致
                             emit(MessageChunk(
                                 id = UUID.randomUUID().toString(),
@@ -241,11 +250,85 @@ class GoogleProvider(
         }
     }
 
+    /**
+     * 图像生成 (Imagen 3).
+     *
+     * Docs: https://ai.google.dev/gemini-api/docs/imagen
+     */
     override suspend fun generateImage(
         providerSetting: ProviderSetting,
         params: ImageGenerationParams
-    ): ImageGenerationResult {
-        throw NotImplementedError("Image generation not implemented for Google provider")
+    ): ImageGenerationResult = withContext(Dispatchers.IO) {
+        require(providerSetting is ProviderSetting.Google) {
+            "Expected Google provider setting"
+        }
+        val key = keyRoulette.next(providerSetting.apiKey)
+        val baseUrl = providerSetting.baseUrl.trimEnd('/')
+        // Imagen 3 API endpoint: https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict
+        val modelId = if (params.model.modelId.isEmpty()) "imagen-3.0-generate-001" else params.model.modelId
+        val url = "$baseUrl/models/$modelId:predict?key=$key"
+
+        val requestBody = buildJsonObject {
+            put("instances", buildJsonArray {
+                add(buildJsonObject {
+                    put("prompt", params.prompt)
+                })
+            })
+            put("parameters", buildJsonObject {
+                put("sampleCount", params.numOfImages)
+                put("aspectRatio", when(params.aspectRatio) {
+                    ImageAspectRatio.SQUARE -> "1:1"
+                    ImageAspectRatio.LANDSCAPE -> "4:3" // or 16:9
+                    ImageAspectRatio.PORTRAIT -> "3:4" // or 9:16
+                })
+                // 默认 output format
+                put("outputOptions", buildJsonObject { 
+                     put("mimeType", "image/png")
+                })
+            })
+        }.toString()
+        
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBody.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val response = client.configureClientWithProxy(providerSetting.proxy)
+            .newCall(request)
+            .await()
+
+        if (!response.isSuccessful) {
+            error("Failed to generate image: ${response.code} ${response.body?.string()}")
+        }
+
+        val bodyStr = response.body?.string()
+        if (bodyStr.isNullOrBlank()) error("Empty response body for image generation")
+
+        val bodyJson = try {
+            json.parseToJsonElement(bodyStr).jsonObject
+        } catch (e: Exception) {
+             throw RuntimeException("Invalid JSON response for image generation: $bodyStr", e)
+        }
+        
+        // 解析 predictions 
+        val predictions = bodyJson["predictions"]?.jsonArray ?: error("No predictions in response")
+        
+        val items = predictions.map { prediction ->
+             val bytesBase64 = prediction.jsonObject["bytesBase64Encoded"]?.jsonPrimitive?.contentOrNull
+             val mimeType = prediction.jsonObject["mimeType"]?.jsonPrimitive?.contentOrNull ?: "image/png"
+             
+             if (bytesBase64 != null) {
+                 ImageGenerationItem(
+                     data = bytesBase64,
+                     mimeType = mimeType
+                 )
+             } else {
+                 // 可能是 URL 或者是其他错误结构
+                 error("No bytesBase64Encoded in prediction")
+             }
+        }
+        
+        ImageGenerationResult(items = items)
     }
 
     private fun buildGeminiRequestBody(

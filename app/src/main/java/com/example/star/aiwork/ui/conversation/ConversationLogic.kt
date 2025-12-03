@@ -19,12 +19,15 @@ package com.example.star.aiwork.ui.conversation
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.example.star.aiwork.domain.ImageGenerationParams
 import com.example.star.aiwork.domain.TextGenerationParams
 import com.example.star.aiwork.domain.model.ChatDataItem
 import com.example.star.aiwork.domain.model.MessageRole
 import com.example.star.aiwork.domain.model.Model
+import com.example.star.aiwork.domain.model.ModelType
 import com.example.star.aiwork.domain.model.ProviderSetting
 import com.example.star.aiwork.data.model.LlmError
+import com.example.star.aiwork.domain.usecase.ImageGenerationUseCase
 import com.example.star.aiwork.domain.usecase.MessagePersistenceGateway
 import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
 import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
@@ -53,6 +56,7 @@ class ConversationLogic(
     private val sendMessageUseCase: SendMessageUseCase,
     private val pauseStreamingUseCase: PauseStreamingUseCase,
     private val rollbackMessageUseCase: RollbackMessageUseCase,
+    private val imageGenerationUseCase: ImageGenerationUseCase, // ADDED
     private val sessionId: String,
     private val getProviderSettings: () -> List<ProviderSetting>,
     private val persistenceGateway: MessagePersistenceGateway? = null,
@@ -146,6 +150,72 @@ class ConversationLogic(
                     uiState.isGenerating = true
                 }
                 
+                if (model.type == ModelType.IMAGE) {
+                     // 如果是图片生成模型，调用图片生成用例
+                    uiState.addMessage(Message("AI", "", timeNow, isLoading = true))
+                    
+                    val result = imageGenerationUseCase(
+                        providerSetting = providerSetting,
+                        params = ImageGenerationParams(
+                            model = model,
+                            prompt = inputContent,
+                            numOfImages = 1
+                        )
+                    )
+                    
+                    result.fold(
+                        onSuccess = { imageResult ->
+                            withContext(Dispatchers.Main) {
+                                uiState.updateLastMessageLoadingState(false)
+                                val firstImage = imageResult.items.firstOrNull()
+                                if (firstImage != null && firstImage.data != null) {
+                                    // 假设后端返回的是 Base64 数据
+                                    val imageUrl = if (firstImage.data.startsWith("http")) {
+                                        firstImage.data
+                                    } else {
+                                        "data:${firstImage.mimeType};base64,${firstImage.data}"
+                                    }
+                                    uiState.appendToLastMessage("Generated Image:")
+                                    uiState.addMessage(
+                                        Message(
+                                            author = "AI",
+                                            content = "",
+                                            timestamp = timeNow,
+                                            imageUrl = imageUrl
+                                        )
+                                    )
+                                    // 持久化图片消息
+                                    persistenceGateway?.replaceLastAssistantMessage(
+                                        sessionId,
+                                        ChatDataItem(
+                                            role = MessageRole.ASSISTANT.name.lowercase(),
+                                            content = "Generated Image:\n[image:$imageUrl]"
+                                        )
+                                    )
+                                } else {
+                                    uiState.appendToLastMessage("Failed to generate image: Empty result.")
+                                }
+                                uiState.isGenerating = false
+                                onSessionUpdated(sessionId)
+                            }
+                        },
+                        onFailure = { error ->
+                            withContext(Dispatchers.Main) {
+                                uiState.updateLastMessageLoadingState(false)
+                                uiState.isGenerating = false
+                                // 移除空消息
+                                if (uiState.messages.isNotEmpty() && uiState.messages[0].content.isBlank()) {
+                                    uiState.removeFirstMessage()
+                                }
+                                val errorMessage = formatErrorMessage(error as? Exception ?: Exception(error.message, error))
+                                uiState.addMessage(Message("System", errorMessage, timeNow))
+                            }
+                            error.printStackTrace()
+                        }
+                    )
+                    return
+                }
+
                 // RAG Retrieval: 仅对非自动触发的消息尝试检索知识库
                 val knowledgeContext = if (!isAutoTriggered) {
                     retrieveKnowledge(inputContent)

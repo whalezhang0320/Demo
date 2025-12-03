@@ -40,15 +40,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -61,21 +52,16 @@ import com.example.star.aiwork.data.repository.MessagePersistenceGatewayImpl
 import com.example.star.aiwork.data.repository.MessageRepositoryImpl
 import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
 import com.example.star.aiwork.domain.model.SessionEntity
+import com.example.star.aiwork.domain.usecase.ImageGenerationUseCase
 import com.example.star.aiwork.domain.usecase.PauseStreamingUseCase
 import com.example.star.aiwork.domain.usecase.RollbackMessageUseCase
 import com.example.star.aiwork.domain.usecase.SendMessageUseCase
 import com.example.star.aiwork.infra.network.SseClient
+import com.example.star.aiwork.infra.network.defaultOkHttpClient
 import com.example.star.aiwork.ui.theme.JetchatTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import kotlin.math.roundToInt
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
@@ -89,8 +75,7 @@ import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-
-
+import androidx.compose.ui.text.TextRange
 import java.util.UUID
 
 /**
@@ -255,8 +240,8 @@ fun ConversationContent(
                     val newText = safeCurrentText + text
                     
                     uiState.textFieldValue = uiState.textFieldValue.copy(
-                        text = text,
-                        selection = TextRange(text.length)
+                        text = newText, // Fix: use newText
+                        selection = TextRange(newText.length) // Fix: use newText.length
                     )
                 }
             }
@@ -427,9 +412,14 @@ fun ConversationPreview() {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
 
-        val sseClient = SseClient()
+        // Fix: Create OkHttpClient
+        val okHttpClient = remember { defaultOkHttpClient() }
+        
+        val sseClient = SseClient(okHttpClient)
         val remoteDataSource = StreamingChatRemoteDataSource(sseClient)
-        val aiRepository = AiRepositoryImpl(remoteDataSource)
+        // Fix: Pass okHttpClient to AiRepositoryImpl
+        val aiRepository = AiRepositoryImpl(remoteDataSource, okHttpClient)
+        
         val messageLocalDataSource = MessageLocalDataSourceImpl(context)
         val messageRepository = MessageRepositoryImpl(messageLocalDataSource)
         val sessionLocalDataSource = com.example.star.aiwork.data.local.datasource.SessionLocalDataSourceImpl(context)
@@ -439,6 +429,8 @@ fun ConversationPreview() {
         val sendMessageUseCase = SendMessageUseCase(aiRepository, persistenceGateway, scope)
         val pauseStreamingUseCase = PauseStreamingUseCase(aiRepository)
         val rollbackMessageUseCase = RollbackMessageUseCase(aiRepository, persistenceGateway)
+        // Fix: Create ImageGenerationUseCase
+        val imageGenerationUseCase = ImageGenerationUseCase(aiRepository)
 
         val previewLogic = ConversationLogic(
             uiState = exampleUiState,
@@ -448,6 +440,7 @@ fun ConversationPreview() {
             sendMessageUseCase = sendMessageUseCase,
             pauseStreamingUseCase = pauseStreamingUseCase,
             rollbackMessageUseCase = rollbackMessageUseCase,
+            imageGenerationUseCase = imageGenerationUseCase, // Fix: Pass imageGenerationUseCase
             sessionId = "123",
             getProviderSettings = { emptyList() },
             persistenceGateway = persistenceGateway,
