@@ -777,10 +777,14 @@ class ConversationLogic(
     ): Flow<String> = flow {
         collect { chunk ->
             if (chunk.isEmpty()) return@collect
-            for (ch in chunk) {
-                emit(ch.toString())
-                if (charDelayMs > 0) {
+            if (charDelayMs > 0) {
+                for (ch in chunk) {
+                    emit(ch.toString())
                     delay(charDelayMs)
+                }
+            } else {
+                for (ch in chunk) {
+                    emit(ch.toString())
                 }
             }
         }
