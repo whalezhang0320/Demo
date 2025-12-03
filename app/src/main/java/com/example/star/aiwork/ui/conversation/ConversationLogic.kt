@@ -423,8 +423,9 @@ class ConversationLogic(
                         sendResult.stream.asCharTypingStream(charDelayMs = 30L).collect { delta ->
                             fullResponse += delta
                             withContext(Dispatchers.Main) {
-                                // 第一次收到内容时，移除加载状态
-                                if (delta.isNotEmpty()) {
+                                // 流式模式下，第一次收到内容时移除加载状态
+                                // 非流式模式下，等到收集完所有数据后再移除（在流收集完成后处理）
+                                if (uiState.streamResponse && delta.isNotEmpty()) {
                                     uiState.updateLastMessageLoadingState(false)
                                 }
                                 // 流式响应时逐字显示，非流式响应时一次性显示
@@ -734,8 +735,9 @@ class ConversationLogic(
                             flowResult.stream.asCharTypingStream(charDelayMs = 30L).collect { delta ->
                                 fullResponse += delta
                                 withContext(Dispatchers.Main) {
-                                    // 第一次收到内容时，移除加载状态
-                                    if (delta.isNotEmpty()) {
+                                    // 流式模式下，第一次收到内容时移除加载状态
+                                    // 非流式模式下，等到收集完所有数据后再移除（在流收集完成后处理）
+                                    if (uiState.streamResponse && delta.isNotEmpty()) {
                                         uiState.updateLastMessageLoadingState(false)
                                     }
                                     // 流式响应时逐字显示
