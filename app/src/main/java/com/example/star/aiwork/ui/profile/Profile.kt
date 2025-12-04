@@ -458,9 +458,14 @@ fun ProviderCard(
                     if (provider is ProviderSetting.Dify) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Bot Type", style = MaterialTheme.typography.bodySmall)
-                        Row {
+                        Column {
                             ProviderSetting.DifyBotType.entries.forEach { type ->
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { difyBotType = type }
+                                ) {
                                     RadioButton(
                                         selected = (difyBotType == type),
                                         onClick = { difyBotType = type }
@@ -469,7 +474,6 @@ fun ProviderCard(
                                         text = type.name,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
                                 }
                             }
                         }
