@@ -23,9 +23,12 @@ class RollbackMessageUseCase(
         params: TextGenerationParams
     ): Result<FlowResult> = withContext(Dispatchers.IO) {
         runCatching {
-            persistenceGateway.removeLastAssistantMessage(sessionId)
+            // 先创建流对象（此时还未真正发送请求，只是准备）
             val taskId = java.util.UUID.randomUUID().toString()
             val flow = aiRepository.streamChat(history, providerSetting, params, taskId)
+            // 流创建成功后再删除数据库中的消息
+            // 注意：这里只是创建流对象，真正的网络请求会在收集流时才开始
+            persistenceGateway.removeLastAssistantMessage(sessionId)
             FlowResult(flow, taskId)
         }
     }

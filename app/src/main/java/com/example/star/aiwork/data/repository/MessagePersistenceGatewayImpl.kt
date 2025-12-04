@@ -1,5 +1,6 @@
 package com.example.star.aiwork.data.repository
 
+import android.util.Log
 import com.example.star.aiwork.data.local.datasource.MessageLocalDataSource
 import com.example.star.aiwork.data.local.datasource.SessionLocalDataSource
 import com.example.star.aiwork.domain.model.ChatDataItem
@@ -84,13 +85,73 @@ class MessagePersistenceGatewayImpl(
      * @param sessionId 会话 ID
      */
     override suspend fun removeLastAssistantMessage(sessionId: String) {
-        val messages = messageDataSource.observeMessages(sessionId).first()
-        val lastAssistantMessage = messages
-            .asReversed()
-            .firstOrNull { it.role == MessageRole.ASSISTANT }
-        
-        if (lastAssistantMessage != null) {
-            messageDataSource.deleteMessage(lastAssistantMessage.id)
+        try {
+            // 添加重试机制，处理可能的竞态条件（消息可能正在被保存）
+            var retryCount = 0
+            val maxRetries = 3
+            val retryDelayMs = 100L
+            
+            while (retryCount < maxRetries) {
+                val messages = messageDataSource.observeMessages(sessionId).first()
+                
+                // 记录调试信息（只在第一次尝试时记录）
+                if (retryCount == 0) {
+                    Log.d("MessagePersistenceGateway", "🔄 [removeLastAssistantMessage] 开始删除最后一条助手消息")
+                    Log.d("MessagePersistenceGateway", "会话ID: $sessionId, 消息总数: ${messages.size}")
+                }
+                
+                if (messages.isEmpty()) {
+                    if (retryCount == 0) {
+                        Log.w("MessagePersistenceGateway", "⚠️ 消息列表为空，无法删除助手消息")
+                    }
+                    // 如果消息列表为空，可能是消息还没保存，重试一次
+                    if (retryCount < maxRetries - 1) {
+                        retryCount++
+                        kotlinx.coroutines.delay(retryDelayMs)
+                        continue
+                    }
+                    return
+                }
+                
+                // 从后往前查找最后一条助手消息
+                // 注意：messages 是按 createdAt ASC 排序的，所以最新的消息在列表末尾
+                // 需要从末尾往前找，找到第一个（时间上最新的）助手消息
+                val lastAssistantMessage = messages
+                    .lastOrNull { it.role == MessageRole.ASSISTANT }
+                
+                if (lastAssistantMessage != null) {
+                    Log.d("MessagePersistenceGateway", "✅ 找到要删除的助手消息: id=${lastAssistantMessage.id}, " +
+                        "content=${lastAssistantMessage.content.take(50)}..., " +
+                        "status=${lastAssistantMessage.status}, " +
+                        "createdAt=${lastAssistantMessage.createdAt}, " +
+                        "重试次数: $retryCount")
+                    
+                    messageDataSource.deleteMessage(lastAssistantMessage.id)
+                    Log.d("MessagePersistenceGateway", "✅ 成功删除助手消息: ${lastAssistantMessage.id}")
+                    return // 成功删除，退出重试循环
+                } else {
+                    // 如果没找到助手消息，可能是消息还没保存，重试一次
+                    if (retryCount < maxRetries - 1) {
+                        retryCount++
+                        kotlinx.coroutines.delay(retryDelayMs)
+                        continue
+                    }
+                    
+                    // 记录详细信息以便调试（只在最后一次尝试时记录）
+                    val messageRoles = messages.map { "${it.role.name}(${it.id.take(8)})" }.joinToString(", ")
+                    Log.w("MessagePersistenceGateway", "⚠️ 未找到助手消息（已重试 $retryCount 次）。消息列表角色: [$messageRoles]")
+                    Log.w("MessagePersistenceGateway", "⚠️ 最后5条消息详情:")
+                    messages.takeLast(5).forEachIndexed { index, msg ->
+                        Log.w("MessagePersistenceGateway", "  [${messages.size - 5 + index}] ${msg.role.name} - " +
+                            "id=${msg.id.take(8)}..., status=${msg.status}, " +
+                            "content=${msg.content.take(30)}...")
+                    }
+                    return // 重试失败，退出
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MessagePersistenceGateway", "❌ 删除助手消息时发生错误", e)
+            throw e
         }
     }
 
