@@ -110,6 +110,11 @@ class ChatViewModel(
 
     init {
         loadSessions()
+        // 启动时如果没有当前会话，创建一个临时会话
+        // 这样用户可以直接在空对话页面发送消息，消息不会丢失
+        if (_currentSession.value == null) {
+            createTemporarySession("新聊天")
+        }
     }
 
     fun loadSessions() {
@@ -186,6 +191,8 @@ class ChatViewModel(
             metadata = SessionMetadata()
         )
         _currentSession.value = session
+        // 将 sessionId 添加到 _newChatSessions，标记为新会话
+        _newChatSessions.value = _newChatSessions.value + session.id
         // 临时session不加载草稿，因为还没有保存到数据库
         _draft.value = null
     }
