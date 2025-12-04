@@ -1,6 +1,11 @@
 package com.example.star.aiwork.domain.model
 
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "sessions")
 data class SessionEntity(
+    @PrimaryKey
     val id: String = "",
     val name: String = "",
     val createdAt: Long = 0L,

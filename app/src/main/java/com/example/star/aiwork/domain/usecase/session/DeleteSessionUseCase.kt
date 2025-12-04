@@ -1,17 +1,17 @@
 package com.example.star.aiwork.domain.usecase.session
 
-import com.example.star.aiwork.domain.repository.SessionRepository
-import com.example.star.aiwork.domain.repository.MessageRepository
-import com.example.star.aiwork.domain.repository.DraftRepository
+import com.example.star.aiwork.data.local.datasource.DraftLocalDataSource
+import com.example.star.aiwork.data.local.datasource.MessageLocalDataSource
+import com.example.star.aiwork.data.local.datasource.SessionLocalDataSource
 
 class DeleteSessionUseCase(
-    private val sessionRepository: SessionRepository,
-    private val messageRepository: MessageRepository,
-    private val draftRepository: DraftRepository
+    private val sessionDataSource: SessionLocalDataSource,
+    private val messageDataSource: MessageLocalDataSource,
+    private val draftDataSource: DraftLocalDataSource
 ) {
     suspend operator fun invoke(sessionId: String) {
-        messageRepository.deleteMessagesBySession(sessionId)
-        draftRepository.deleteDraft(sessionId)
-        sessionRepository.deleteSession(sessionId)
+        messageDataSource.deleteMessagesBySession(sessionId)
+        draftDataSource.deleteDraft(sessionId)
+        sessionDataSource.deleteSession(sessionId)
     }
 }

@@ -1,29 +1,24 @@
 package com.example.star.aiwork.data.local.datasource
 
-import com.example.star.aiwork.data.local.record.SessionRecord
+import com.example.star.aiwork.domain.model.SessionEntity
 import kotlinx.coroutines.flow.Flow
 
 interface SessionLocalDataSource {
 
     /**
-     * 创建会话
+     * 创建或更新会话
      */
-    suspend fun insertSession(session: SessionRecord)
-
-    /**
-     * 更新会话（名称、preview、置顶等）
-     */
-    suspend fun updateSession(session: SessionRecord)
+    suspend fun upsertSession(session: SessionEntity)
 
     /**
      * 获取单个会话
      */
-    suspend fun getSession(id: String): SessionRecord?
+    suspend fun getSession(id: String): SessionEntity?
 
     /**
      * 获取所有会话列表（会话列表 UI 用）
      */
-    fun observeSessions(): Flow<List<SessionRecord>>
+    fun observeSessions(): Flow<List<SessionEntity>>
 
     /**
      * 删除会话
@@ -33,5 +28,5 @@ interface SessionLocalDataSource {
     /**
      * 搜索会话
      */
-    fun searchSessions(query: String): Flow<List<SessionRecord>>
+    fun searchSessions(query: String): Flow<List<SessionEntity>>
 }

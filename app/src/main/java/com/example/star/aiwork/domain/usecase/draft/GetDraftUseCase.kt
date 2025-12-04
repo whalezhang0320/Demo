@@ -1,10 +1,11 @@
 package com.example.star.aiwork.domain.usecase.draft
 
-import com.example.star.aiwork.domain.repository.DraftRepository
+import com.example.star.aiwork.data.local.datasource.DraftLocalDataSource
+import com.example.star.aiwork.domain.model.DraftEntity
 
 class GetDraftUseCase(
-    private val repository: DraftRepository
+    private val dataSource: DraftLocalDataSource
 ) {
-    suspend operator fun invoke(sessionId: String) =
-        repository.getDraft(sessionId)
+    suspend operator fun invoke(sessionId: String): DraftEntity? =
+        dataSource.getDraft(sessionId)
 }

@@ -1,11 +1,11 @@
 package com.example.star.aiwork.domain.usecase.session
 
+import com.example.star.aiwork.data.local.datasource.SessionLocalDataSource
 import com.example.star.aiwork.domain.model.SessionEntity
-import com.example.star.aiwork.domain.repository.SessionRepository
 import kotlinx.coroutines.flow.Flow
 
-class SearchSessionsUseCase(private val sessionRepository: SessionRepository) {
+class SearchSessionsUseCase(private val dataSource: SessionLocalDataSource) {
     operator fun invoke(query: String): Flow<List<SessionEntity>> {
-        return sessionRepository.searchSessions(query)
+        return dataSource.searchSessions(query)
     }
 }

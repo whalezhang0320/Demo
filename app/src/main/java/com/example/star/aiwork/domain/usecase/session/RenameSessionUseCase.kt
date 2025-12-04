@@ -1,13 +1,13 @@
 package com.example.star.aiwork.domain.usecase.session
 
-import com.example.star.aiwork.domain.repository.SessionRepository
+import com.example.star.aiwork.data.local.datasource.SessionLocalDataSource
 
 class RenameSessionUseCase(
-    private val repository: SessionRepository
+    private val dataSource: SessionLocalDataSource
 ) {
     suspend operator fun invoke(id: String, newName: String) {
-        val session = repository.getSession(id) ?: return
-        repository.updateSession(
+        val session = dataSource.getSession(id) ?: return
+        dataSource.upsertSession(
             session.copy(
                 name = newName,
                 updatedAt = System.currentTimeMillis()

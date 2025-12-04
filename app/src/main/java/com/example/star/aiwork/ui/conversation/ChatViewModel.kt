@@ -8,9 +8,6 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import com.example.star.aiwork.data.local.datasource.DraftLocalDataSourceImpl
 import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
 import com.example.star.aiwork.data.local.datasource.SessionLocalDataSourceImpl
-import com.example.star.aiwork.data.repository.DraftRepositoryImpl
-import com.example.star.aiwork.data.repository.MessageRepositoryImpl
-import com.example.star.aiwork.data.repository.SessionRepositoryImpl
 import com.example.star.aiwork.domain.model.MessageEntity
 import com.example.star.aiwork.domain.model.MessageMetadata
 import com.example.star.aiwork.domain.model.MessageRole
@@ -417,26 +414,21 @@ class ChatViewModel(
                 val messageLocalDataSource = MessageLocalDataSourceImpl(application)
                 val draftLocalDataSource = DraftLocalDataSourceImpl(application)
 
-                // Create Repositories
-                val sessionRepository = SessionRepositoryImpl(sessionLocalDataSource)
-                val messageRepository = MessageRepositoryImpl(messageLocalDataSource)
-                val draftRepository = DraftRepositoryImpl(draftLocalDataSource)
-
                 // Create UseCases
-                val getSessionListUseCase = GetSessionListUseCase(sessionRepository)
-                val createSessionUseCase = CreateSessionUseCase(sessionRepository)
-                val renameSessionUseCase = RenameSessionUseCase(sessionRepository)
-                val deleteSessionUseCase = DeleteSessionUseCase(sessionRepository, messageRepository, draftRepository)
-                val pinSessionUseCase = PinSessionUseCase(sessionRepository)
-                val archiveSessionUseCase = ArchiveSessionUseCase(sessionRepository)
-                val searchSessionsUseCase = SearchSessionsUseCase(sessionRepository)
+                val getSessionListUseCase = GetSessionListUseCase(sessionLocalDataSource)
+                val createSessionUseCase = CreateSessionUseCase(sessionLocalDataSource)
+                val renameSessionUseCase = RenameSessionUseCase(sessionLocalDataSource)
+                val deleteSessionUseCase = DeleteSessionUseCase(sessionLocalDataSource, messageLocalDataSource, draftLocalDataSource)
+                val pinSessionUseCase = PinSessionUseCase(sessionLocalDataSource)
+                val archiveSessionUseCase = ArchiveSessionUseCase(sessionLocalDataSource)
+                val searchSessionsUseCase = SearchSessionsUseCase(sessionLocalDataSource)
 
-                val sendMessageUseCase = SendMessageUseCase(messageRepository, sessionRepository)
-                val rollbackMessageUseCase = RollbackMessageUseCase(messageRepository)
-                val observeMessagesUseCase = ObserveMessagesUseCase(messageRepository)
+                val sendMessageUseCase = SendMessageUseCase(messageLocalDataSource, sessionLocalDataSource)
+                val rollbackMessageUseCase = RollbackMessageUseCase(messageLocalDataSource)
+                val observeMessagesUseCase = ObserveMessagesUseCase(messageLocalDataSource)
 
-                val getDraftUseCase = GetDraftUseCase(draftRepository)
-                val updateDraftUseCase = UpdateDraftUseCase(draftRepository)
+                val getDraftUseCase = GetDraftUseCase(draftLocalDataSource)
+                val updateDraftUseCase = UpdateDraftUseCase(draftLocalDataSource)
 
                 return ChatViewModel(
                     getSessionListUseCase,
@@ -456,3 +448,4 @@ class ChatViewModel(
         }
     }
 }
+

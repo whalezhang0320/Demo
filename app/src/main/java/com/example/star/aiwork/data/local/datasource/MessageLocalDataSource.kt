@@ -1,19 +1,17 @@
 package com.example.star.aiwork.data.local.datasource
 
-import com.example.star.aiwork.data.local.record.MessageRecord
+import com.example.star.aiwork.domain.model.MessageEntity
 import kotlinx.coroutines.flow.Flow
 
 interface MessageLocalDataSource {
 
-    suspend fun insertMessage(message: MessageRecord)
+    suspend fun upsertMessage(message: MessageEntity)
 
-    suspend fun getMessage(id: String): MessageRecord?
+    suspend fun getMessage(id: String): MessageEntity?
 
-    suspend fun getMessages(sessionId: String): List<MessageRecord>
-
-    fun observeMessages(sessionId: String): Flow<List<MessageRecord>>
-
-    suspend fun deleteMessage(id: String)
+    fun observeMessages(sessionId: String): Flow<List<MessageEntity>>
 
     suspend fun deleteMessagesBySession(sessionId: String)
+
+    suspend fun deleteMessage(messageId: String)
 }

@@ -44,8 +44,6 @@ import java.util.Locale
 import com.example.star.aiwork.data.remote.StreamingChatRemoteDataSource
 import com.example.star.aiwork.data.repository.AiRepositoryImpl
 import com.example.star.aiwork.data.repository.MessagePersistenceGatewayImpl
-import com.example.star.aiwork.data.repository.MessageRepositoryImpl
-import com.example.star.aiwork.data.repository.SessionRepositoryImpl
 import com.example.star.aiwork.data.local.datasource.MessageLocalDataSourceImpl
 import com.example.star.aiwork.data.local.datasource.SessionLocalDataSourceImpl
 import com.example.star.aiwork.domain.usecase.ImageGenerationUseCase
@@ -99,16 +97,10 @@ class ConversationFragment : Fragment() {
                 val remoteChatDataSource = remember { StreamingChatRemoteDataSource(sseClient) }
                 val aiRepository = remember { AiRepositoryImpl(remoteChatDataSource, okHttpClient) }
 
-                val messageRepository = remember(context) {
-                    val messageLocalDataSource = MessageLocalDataSourceImpl(context)
-                    MessageRepositoryImpl(messageLocalDataSource)
-                }
-                val sessionRepository = remember(context) {
-                    val sessionLocalDataSource = SessionLocalDataSourceImpl(context)
-                    SessionRepositoryImpl(sessionLocalDataSource)
-                }
-                val messagePersistenceGateway = remember(messageRepository, sessionRepository) {
-                    MessagePersistenceGatewayImpl(messageRepository, sessionRepository)
+                val messageLocalDataSource = remember(context) { MessageLocalDataSourceImpl(context) }
+                val sessionLocalDataSource = remember(context) { SessionLocalDataSourceImpl(context) }
+                val messagePersistenceGateway = remember(messageLocalDataSource, sessionLocalDataSource) {
+                    MessagePersistenceGatewayImpl(messageLocalDataSource, sessionLocalDataSource)
                 }
                 val sendMessageUseCase = remember(aiRepository, messagePersistenceGateway, scope) {
                     SendMessageUseCase(aiRepository, messagePersistenceGateway, scope)

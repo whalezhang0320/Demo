@@ -1,13 +1,13 @@
 package com.example.star.aiwork.domain.usecase.session
 
-import com.example.star.aiwork.domain.repository.SessionRepository
+import com.example.star.aiwork.data.local.datasource.SessionLocalDataSource
 
 class PinSessionUseCase(
-    private val repository: SessionRepository
+    private val dataSource: SessionLocalDataSource
 ) {
     suspend operator fun invoke(id: String, pinned: Boolean) {
-        val session = repository.getSession(id) ?: return
-        repository.updateSession(
+        val session = dataSource.getSession(id) ?: return
+        dataSource.upsertSession(
             session.copy(
                 pinned = pinned,
                 updatedAt = System.currentTimeMillis()

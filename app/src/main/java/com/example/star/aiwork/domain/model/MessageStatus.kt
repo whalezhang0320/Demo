@@ -1,5 +1,8 @@
 package com.example.star.aiwork.domain.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class MessageStatus {
     SENDING,        // 用户消息发送中
     STREAMING,      // Assistant 正在流式回复

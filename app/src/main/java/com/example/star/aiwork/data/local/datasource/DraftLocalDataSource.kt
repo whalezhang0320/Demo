@@ -1,15 +1,15 @@
 package com.example.star.aiwork.data.local.datasource
 
-import com.example.star.aiwork.data.local.record.DraftRecord
+import com.example.star.aiwork.domain.model.DraftEntity
 import kotlinx.coroutines.flow.Flow
 
 interface DraftLocalDataSource {
 
-    suspend fun upsertDraft(draft: DraftRecord)
+    suspend fun upsertDraft(draft: DraftEntity)
 
-    suspend fun getDraft(sessionId: String): DraftRecord?
+    suspend fun getDraft(sessionId: String): DraftEntity?
 
-    fun observeDraft(sessionId: String): Flow<DraftRecord?>
+    fun observeDraft(sessionId: String): Flow<DraftEntity?>
 
     suspend fun deleteDraft(sessionId: String)
 }
