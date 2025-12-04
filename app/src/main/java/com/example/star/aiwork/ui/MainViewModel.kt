@@ -205,6 +205,33 @@ class MainViewModel(
         viewModelScope.launch {
             userPreferencesRepository.updateActiveProviderId(providerId)
             userPreferencesRepository.updateActiveModelId(modelId)
+            
+            // 更新模型的使用时间
+            val currentSettings = providerSettings.value
+            val provider = currentSettings.find { it.id == providerId }
+            if (provider != null) {
+                val updatedModels = provider.models.map { model ->
+                    if (model.modelId == modelId) {
+                        model.copy(lastUsedTime = System.currentTimeMillis())
+                    } else {
+                        model
+                    }
+                }
+                
+                // 只有当模型列表真正发生变化（时间戳更新）时才保存
+                // 这里肯定会变化，因为我们更新了 lastUsedTime
+                val updatedProvider = when (provider) {
+                    is ProviderSetting.OpenAI -> provider.copy(models = updatedModels)
+                    is ProviderSetting.Ollama -> provider.copy(models = updatedModels)
+                    is ProviderSetting.Google -> provider.copy(models = updatedModels)
+                    is ProviderSetting.Claude -> provider.copy(models = updatedModels)
+                }
+                
+                val newSettings = currentSettings.map {
+                    if (it.id == providerId) updatedProvider else it
+                }
+                userPreferencesRepository.updateProviderSettings(newSettings)
+            }
         }
     }
     

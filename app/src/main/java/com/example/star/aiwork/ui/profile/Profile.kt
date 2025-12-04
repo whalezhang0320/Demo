@@ -146,6 +146,9 @@ fun ProfileScreen(
                     },
                     onOpenModelSelection = {
                         modelSelectionProvider = provider
+                    },
+                    onSelectModel = { modelId ->
+                        onSelectModel(provider.id, modelId)
                     }
                 )
             }
@@ -313,7 +316,8 @@ fun ProviderCard(
     activeModelId: String?,
     onUpdate: (ProviderSetting) -> Unit,
     onDelete: () -> Unit,
-    onOpenModelSelection: () -> Unit
+    onOpenModelSelection: () -> Unit,
+    onSelectModel: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -360,7 +364,6 @@ fun ProviderCard(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    // Removed the Icon(Icons.Default.Check, ...) block as requested
                     
                     // Show active model badge if applicable
                     if (provider.id == activeProviderId) {
@@ -501,28 +504,67 @@ fun ProviderCard(
                     if (provider.enabled) {
                         Spacer(modifier = Modifier.height(16.dp))
                         HorizontalDivider()
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                        // Model Selection Trigger
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column {
-                                Text("模型列表", style = MaterialTheme.typography.titleMedium)
-                                Text("${provider.models.size} 个模型可用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                
-                                if (provider.id == activeProviderId && !activeModelId.isNullOrEmpty()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("当前: $activeModelId", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        Text("最近使用的模型:", style = MaterialTheme.typography.titleSmall)
+                        
+                        Column(modifier = Modifier.padding(top = 8.dp)) {
+                            // Show top 5 models, sorted by last usage time (descending)
+                            val displayModels = remember(provider.models) {
+                                provider.models.sortedByDescending { it.lastUsedTime }.take(5)
+                            }
+                            
+                            displayModels.forEach { model ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = (provider.id == activeProviderId && model.modelId == activeModelId),
+                                        onClick = { onSelectModel(model.modelId) },
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f).clickable { onSelectModel(model.modelId) }) {
+                                        Text(
+                                            text = model.displayName.ifBlank { model.modelId },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = 1
+                                        )
+                                        if (model.displayName.isNotBlank() && model.displayName != model.modelId) {
+                                            Text(
+                                                text = model.modelId,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                    
+                                    IconButton(
+                                        onClick = { onUpdate(provider.delModel(model)) }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete, 
+                                            contentDescription = "Delete Model",
+                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                             
-                            OutlinedButton(onClick = onOpenModelSelection) {
-                                Icon(Icons.Default.List, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("选择模型")
+                            if (provider.models.size > 5) {
+                                TextButton(
+                                    onClick = onOpenModelSelection,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("查看全部 ${provider.models.size} 个模型...")
+                                }
+                            } else if (provider.models.isEmpty()) {
+                                Text("暂无模型，请点击测试刷新", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }

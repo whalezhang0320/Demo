@@ -19,6 +19,7 @@ import java.util.UUID
  * @property abilities 模型具备的特殊能力 (工具调用、推理等)。
  * @property tools 模型支持的内置工具集 (如联网搜索)。
  * @property providerOverwrite 覆盖提供商级别的默认设置 (例如使用特定的 API Key 或 Base URL)。
+ * @property lastUsedTime 上次使用时间戳。
  */
 @Serializable
 data class Model(
@@ -33,6 +34,7 @@ data class Model(
     val abilities: List<ModelAbility> = emptyList(),
     val tools: Set<BuiltInTools> = emptySet(),
     val providerOverwrite: ProviderSetting? = null,
+    val lastUsedTime: Long = 0,
 )
 
 /**
