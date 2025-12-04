@@ -399,6 +399,18 @@ class ConversationLogic(
                 }
                 val userMessage: ChatDataItem = toChatDataItem(messagesToSend.last())
 
+                // 打印发送给模型的全部内容（包括历史记录）
+                logAllMessagesToSend(
+                    sessionId = sessionId,
+                    model = model,
+                    params = params,
+                    messagesToSend = messagesToSend,
+                    historyChat = historyChat,
+                    userMessage = userMessage,
+                    isAutoTriggered = isAutoTriggered,
+                    loopCount = loopCount
+                )
+
                 val sendResult = sendMessageUseCase(
                     sessionId = sessionId,
                     userMessage = userMessage,
@@ -419,6 +431,7 @@ class ConversationLogic(
                 var lastUpdateTime = 0L
                 val UPDATE_INTERVAL_MS = 500L
                 var hasShownSlowLoadingHint = false // 标记是否已显示慢加载提示
+                var hasErrorOccurred = false // 标记是否发生了错误
 
                 // 无论流式还是非流式，都从 stream 收集响应
                 // 在独立的协程中运行流式收集，以便可以立即取消
@@ -480,10 +493,50 @@ class ConversationLogic(
                             }
                         }
                     } catch (streamError: CancellationException) {
-                        // 协程被取消是正常情况，直接结束协程即可，由 cancelStreaming 负责 UI 收尾
+                        // 检查是否是用户主动取消
+                        if (!isCancelled) {
+                            // 非用户主动取消的 CancellationException（可能是网络中断等导致的），需要显示错误
+                            hasErrorOccurred = true
+                            logThrowableChain("ConversationLogic", "streamError during collect (cancelled)", streamError)
+                            val errorMessage = formatErrorMessage(
+                                streamError as? Exception
+                                    ?: Exception(streamError.message, streamError)
+                            )
+                            
+                            withContext(Dispatchers.Main) {
+                                uiState.updateLastMessageLoadingState(false)
+                                uiState.isGenerating = false
+
+                                if (fullResponse.isNotEmpty()) {
+                                    // 已有部分内容，在内容后追加错误提示
+                                    //val errorText = "\n\n[错误] $errorMessage"
+                                    //uiState.appendToLastMessage(errorText)
+                                    // 更新 fullResponse 以包含错误信息，确保保存到数据库时也包含错误提示
+                                    //fullResponse += errorText
+                                } else {
+                                    // 完全没有内容：移除空的占位 AI 消息，并显示一条系统错误消息
+                                    if (uiState.messages.isNotEmpty() &&
+                                        uiState.messages[0].author == "AI" &&
+                                        uiState.messages[0].content.isBlank()
+                                    ) {
+                                        uiState.removeFirstMessage()
+                                    }
+                                }
+                                uiState.addMessage(
+                                    Message("System", errorMessage, timeNow)
+                                )
+                            }
+                        }
+                        // 如果是用户主动取消（isCancelled == true），不显示错误信息，由 cancelStreaming 负责 UI 收尾
                     } catch (streamError: Exception) {
                         // 打印异常链，便于分析实际的网络错误类型
+                        hasErrorOccurred = true
                         logThrowableChain("ConversationLogic", "streamError during collect", streamError)
+
+                        val errorMessage = formatErrorMessage(
+                            streamError as? Exception
+                                ?: Exception(streamError.message, streamError)
+                        )
 
                         // 流收集过程中的错误需要在 UI 层做兜底处理，但不要继续向外抛异常以避免崩溃
                         withContext(Dispatchers.Main) {
@@ -491,7 +544,11 @@ class ConversationLogic(
                             uiState.isGenerating = false
 
                             if (fullResponse.isNotEmpty()) {
-                                // 已经有部分内容，就保留当前内容，不再额外追加错误提示
+                                // 已有部分内容，在内容后追加错误提示
+                                //val errorText = "\n\n[错误] $errorMessage"
+                                //uiState.appendToLastMessage(errorText)
+                                // 更新 fullResponse 以包含错误信息，确保保存到数据库时也包含错误提示
+                                //fullResponse += errorText
                             } else {
                                 // 完全没有内容：移除空的占位 AI 消息，并显示一条系统错误消息
                                 if (uiState.messages.isNotEmpty() &&
@@ -500,15 +557,10 @@ class ConversationLogic(
                                 ) {
                                     uiState.removeFirstMessage()
                                 }
-
-                                val errorMessage = formatErrorMessage(
-                                    streamError as? Exception
-                                        ?: Exception(streamError.message, streamError)
-                                )
-                                uiState.addMessage(
-                                    Message("System", errorMessage, timeNow)
-                                )
                             }
+                            uiState.addMessage(
+                                Message("System", errorMessage, timeNow)
+                            )
                         }
                         // 不再重新抛出异常，避免在 DefaultDispatcher 线程上触发全局未捕获异常导致崩溃
                     }
@@ -526,6 +578,12 @@ class ConversationLogic(
                 // 等待提示消息的流式显示完成（如果正在显示）
                 hintTypingJob?.join()
                 hintTypingJob = null
+                
+                // 如果发生了错误，不再执行后续的 UI 更新和数据库保存操作
+                // 错误消息已经在 catch 块中添加了
+                if (hasErrorOccurred) {
+                    return@processMessage
+                }
                 
                 // 流式响应结束后，如果是非流式模式，一次性显示完整内容
                 // 但如果已被取消，则不显示已收集的内容（cancelStreaming 已经处理了）
@@ -772,6 +830,24 @@ class ConversationLogic(
                 maxTokens = uiState.maxTokens
             )
 
+            // 打印回滚重发时的消息内容
+            Log.d("ConversationLogic", "=".repeat(100))
+            Log.d("ConversationLogic", "🔄 [rollbackAndRegenerate] 回滚并重新生成")
+            Log.d("ConversationLogic", "-".repeat(100))
+            Log.d("ConversationLogic", "会话ID: $sessionId")
+            Log.d("ConversationLogic", "模型ID: ${model.modelId}")
+            Log.d("ConversationLogic", "参数: temperature=${params.temperature}, maxTokens=${params.maxTokens}")
+            Log.d("ConversationLogic", "历史消息 (共 ${contextMessages.size} 条):")
+            contextMessages.forEachIndexed { index, item ->
+                val content = if (item.content.length > 500) {
+                    "${item.content.take(500)}... [已截断，总长度: ${item.content.length}]"
+                } else {
+                    item.content
+                }
+                Log.d("ConversationLogic", "  历史 #${index + 1} [${item.role}]: $content")
+            }
+            Log.d("ConversationLogic", "=".repeat(100))
+            
             // 调用 RollbackMessageUseCase
             // history 应该包含除了最后一条助手消息之外的所有历史对话
             val rollbackResult = rollbackMessageUseCase(
@@ -798,6 +874,7 @@ class ConversationLogic(
                     var lastUpdateTime = 0L
                     val UPDATE_INTERVAL_MS = 500L
                     var hasShownSlowLoadingHint = false // 标记是否已显示慢加载提示
+                    var hasErrorOccurred = false // 标记是否发生了错误
 
                     // 收集流式响应，在独立的协程中运行以便可以立即取消
                     streamingJob = streamingScope.launch {
@@ -857,27 +934,60 @@ class ConversationLogic(
                                 }
                             }
                         } catch (e: CancellationException) {
-                            // 协程被取消是正常情况，直接结束协程即可，由 cancelStreaming 负责 UI 收尾
+                            // 检查是否是用户主动取消
+                            if (!isCancelled) {
+                                // 非用户主动取消的 CancellationException（可能是网络中断等导致的），需要显示错误
+                                hasErrorOccurred = true
+                                logThrowableChain("ConversationLogic", "streamError during rollback collect (cancelled)", e)
+                                val errorMessage = formatErrorMessage(
+                                    e as? Exception
+                                        ?: Exception(e.message, e)
+                                )
+                                
+                                withContext(Dispatchers.Main) {
+                                    uiState.updateLastMessageLoadingState(false)
+                                    uiState.isGenerating = false
+                                    
+                                    // 移除空的占位 AI 消息（如果存在）
+                                    if (uiState.messages.isNotEmpty() &&
+                                        uiState.messages[0].author == "AI" &&
+                                        uiState.messages[0].content.isBlank()
+                                    ) {
+                                        uiState.removeFirstMessage()
+                                    }
+
+                                    uiState.addMessage(
+                                        Message("System", errorMessage, timeNow)
+                                    )
+                                }
+                            }
+                            // 如果是用户主动取消（isCancelled == true），不显示错误信息，由 cancelStreaming 负责 UI 收尾
                         } catch (streamError: Exception) {
                             // 打印异常链，便于分析实际的网络错误类型
+                            hasErrorOccurred = true
                             logThrowableChain("ConversationLogic", "streamError during rollback collect", streamError)
+
+                            val errorMessage = formatErrorMessage(
+                                streamError as? Exception
+                                    ?: Exception(streamError.message, streamError)
+                            )
 
                             // 流收集过程中的错误需要在 UI 层做兜底处理，但不要继续向外抛异常以避免崩溃
                             withContext(Dispatchers.Main) {
                                 uiState.updateLastMessageLoadingState(false)
                                 uiState.isGenerating = false
-
-                                if (fullResponse.isNotEmpty()) {
-                                    // 已经有部分内容，就保留当前内容，不再额外追加错误提示
-                                } else {
-                                    val errorMessage = formatErrorMessage(
-                                        streamError as? Exception
-                                            ?: Exception(streamError.message, streamError)
-                                    )
-                                    uiState.addMessage(
-                                        Message("System", errorMessage, timeNow)
-                                    )
+                                
+                                // 移除空的占位 AI 消息（如果存在）
+                                if (uiState.messages.isNotEmpty() &&
+                                    uiState.messages[0].author == "AI" &&
+                                    uiState.messages[0].content.isBlank()
+                                ) {
+                                    uiState.removeFirstMessage()
                                 }
+
+                                uiState.addMessage(
+                                    Message("System", errorMessage, timeNow)
+                                )
                             }
                             // 不再重新抛出异常，避免在 DefaultDispatcher 线程上触发全局未捕获异常导致崩溃
                         }
@@ -895,6 +1005,12 @@ class ConversationLogic(
                     // 等待提示消息的流式显示完成（如果正在显示）
                     hintTypingJob?.join()
                     hintTypingJob = null
+
+                    // 如果发生了错误，不再执行后续的 UI 更新和数据库保存操作
+                    // 错误消息已经在 catch 块中添加了
+                    if (hasErrorOccurred) {
+                        return@fold
+                    }
 
                     // 流式响应结束后，如果是非流式模式，一次性显示完整内容
                     // 但如果已被取消，则不显示已收集的内容（cancelStreaming 已经处理了）
@@ -974,6 +1090,92 @@ class ConversationLogic(
             role = message.role.name.lowercase(),
             content = builder.toString()
         )
+    }
+    
+    /**
+     * 打印发送给模型的全部内容（包括历史记录）
+     */
+    private fun logAllMessagesToSend(
+        sessionId: String,
+        model: Model,
+        params: TextGenerationParams,
+        messagesToSend: List<UIMessage>,
+        historyChat: List<ChatDataItem>,
+        userMessage: ChatDataItem,
+        isAutoTriggered: Boolean,
+        loopCount: Int
+    ) {
+        val logTag = "ConversationLogic"
+        
+        Log.d(logTag, "=".repeat(100))
+        Log.d(logTag, "📤 [processMessage] 准备发送消息给模型")
+        Log.d(logTag, "-".repeat(100))
+        Log.d(logTag, "会话ID: $sessionId")
+        Log.d(logTag, "模型ID: ${model.modelId}")
+        Log.d(logTag, "模型名称: ")
+        Log.d(logTag, "参数: temperature=${params.temperature}, maxTokens=${params.maxTokens}")
+        Log.d(logTag, "是否自动触发: $isAutoTriggered, 循环次数: $loopCount")
+        Log.d(logTag, "-".repeat(100))
+        Log.d(logTag, "完整消息列表 (共 ${messagesToSend.size} 条):")
+        
+        messagesToSend.forEachIndexed { index, message ->
+            val roleName = message.role.name
+            val contentBuilder = StringBuilder()
+            
+            message.parts.forEach { part ->
+                when (part) {
+                    is UIMessagePart.Text -> {
+                        val text = part.text
+                        if (text.length > 500) {
+                            contentBuilder.append("${text.take(500)}... [已截断，总长度: ${text.length}]")
+                        } else {
+                            contentBuilder.append(text)
+                        }
+                    }
+                    is UIMessagePart.Image -> {
+                        val imageUrl = part.url
+                        val imageInfo = if (imageUrl.length > 100) {
+                            "${imageUrl.take(100)}... [已截断]"
+                        } else {
+                            imageUrl
+                        }
+                        contentBuilder.append("\n[图片: $imageInfo]")
+                    }
+                    else -> {
+                        contentBuilder.append("\n[其他类型: ${part::class.simpleName}]")
+                    }
+                }
+            }
+            
+            val content = contentBuilder.toString().trim()
+            Log.d(logTag, "")
+            Log.d(logTag, "消息 #${index + 1} [${roleName}]:")
+            Log.d(logTag, content)
+            if (content.isEmpty()) {
+                Log.d(logTag, "[空内容]")
+            }
+        }
+        
+        Log.d(logTag, "-".repeat(100))
+        Log.d(logTag, "历史消息 (historyChat, 共 ${historyChat.size} 条):")
+        historyChat.forEachIndexed { index, item ->
+            val content = if (item.content.length > 500) {
+                "${item.content.take(500)}... [已截断，总长度: ${item.content.length}]"
+            } else {
+                item.content
+            }
+            Log.d(logTag, "  历史 #${index + 1} [${item.role}]: $content")
+        }
+        
+        Log.d(logTag, "-".repeat(100))
+        Log.d(logTag, "当前用户消息 (userMessage):")
+        val userContent = if (userMessage.content.length > 500) {
+            "${userMessage.content.take(500)}... [已截断，总长度: ${userMessage.content.length}]"
+        } else {
+            userMessage.content
+        }
+        Log.d(logTag, "  [${userMessage.role}]: $userContent")
+        Log.d(logTag, "=".repeat(100))
     }
     
     /**

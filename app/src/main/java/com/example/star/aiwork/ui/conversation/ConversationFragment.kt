@@ -166,8 +166,9 @@ class ConversationFragment : Fragment() {
                     }
                 }
 
-                // 当会话或消息变化时，同步数据库消息到 UI 状态
-                LaunchedEffect(convertedMessages, currentSession?.id) {
+                // 只在会话切换时，从数据库同步消息到 UI 状态
+                // 注意：不在消息内容变化时同步，以避免清空临时的加载占位消息
+                LaunchedEffect(currentSession?.id) {
                     currentSession?.let { session ->
                         val sessionUiState = chatViewModel.getOrCreateSessionUiState(session.id, session.name)
                         // 清空现有消息
