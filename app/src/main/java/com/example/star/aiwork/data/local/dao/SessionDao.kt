@@ -22,9 +22,13 @@ interface SessionDao {
 
     @Query("""
         SELECT * FROM sessions WHERE id IN (
-            SELECT id FROM sessions WHERE name LIKE :query
+            SELECT id FROM sessions WHERE rowid IN (
+                SELECT rowid FROM sessions_fts WHERE sessions_fts MATCH :query || '*'
+            )
             UNION
-            SELECT sessionId FROM messages WHERE content LIKE :query
+            SELECT sessionId FROM messages WHERE rowid IN (
+                SELECT rowid FROM messages_fts WHERE messages_fts MATCH :query || '*'
+            )
         ) ORDER BY updatedAt DESC
         """)
     fun searchSessions(query: String): Flow<List<SessionEntity>>
