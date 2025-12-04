@@ -18,6 +18,7 @@ package com.example.star.aiwork.ui.profile
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,14 +30,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.example.star.aiwork.data.provider.GoogleProvider
 import com.example.star.aiwork.data.provider.OllamaProvider
 import com.example.star.aiwork.data.provider.OpenAIProvider
+import com.example.star.aiwork.domain.model.Model
 import com.example.star.aiwork.domain.model.ProviderSetting
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.util.UUID
 
@@ -55,6 +61,7 @@ fun ProfileScreen(
     onBack: () -> Unit = {}
 ) {
     var showAddProviderDialog by remember { mutableStateOf(false) }
+    var modelSelectionProvider by remember { mutableStateOf<ProviderSetting?>(null) }
 
     if (showAddProviderDialog) {
         AddProviderDialog(
@@ -86,6 +93,18 @@ fun ProfileScreen(
                     onUpdateSettings(providerSettings + newProvider)
                 }
                 showAddProviderDialog = false
+            }
+        )
+    }
+
+    if (modelSelectionProvider != null) {
+        ModelListDialog(
+            provider = modelSelectionProvider!!,
+            activeModelId = if (modelSelectionProvider!!.id == activeProviderId) activeModelId else null,
+            onDismiss = { modelSelectionProvider = null },
+            onSelect = { modelId ->
+                onSelectModel(modelSelectionProvider!!.id, modelId)
+                modelSelectionProvider = null
             }
         )
     }
@@ -125,8 +144,8 @@ fun ProfileScreen(
                     onDelete = {
                         onUpdateSettings(providerSettings.filter { it.id != provider.id })
                     },
-                    onSelectModel = { modelId ->
-                        onSelectModel(provider.id, modelId)
+                    onOpenModelSelection = {
+                        modelSelectionProvider = provider
                     }
                 )
             }
@@ -167,13 +186,134 @@ fun AddProviderDialog(
 }
 
 @Composable
+fun ModelListDialog(
+    provider: ProviderSetting,
+    activeModelId: String?,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    
+    val groupedModelsState = produceState<Map<String, List<Model>>?>(initialValue = null, provider.models, searchQuery) {
+        value = withContext(Dispatchers.Default) {
+            val filtered = if (searchQuery.isBlank()) provider.models
+            else provider.models.filter { 
+                it.displayName.contains(searchQuery, ignoreCase = true) || 
+                it.modelId.contains(searchQuery, ignoreCase = true) 
+            }
+            filtered.groupBy { getModelGroup(it.modelId) }.toSortedMap()
+        }
+    }
+    
+    val groupedModels = groupedModelsState.value
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false), // Make it wider
+        modifier = Modifier
+            .fillMaxWidth(0.9f)
+            .fillMaxHeight(0.85f),
+        title = {
+            Column {
+                Text("选择模型 (${provider.name})", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("搜索模型...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+        },
+        text = {
+            Column {
+                if (groupedModels == null) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("加载模型中...", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                } else if (groupedModels.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("未找到模型", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        groupedModels.forEach { (group, models) ->
+                            item(key = "header_$group") {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = group,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            
+                            items(models, key = { it.modelId }) { model ->
+                                val isSelected = model.modelId == activeModelId
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSelect(model.modelId) }
+                                        .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent)
+                                        .padding(vertical = 8.dp, horizontal = 8.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { onSelect(model.modelId) },
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = model.displayName.ifBlank { model.modelId },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (model.displayName.isNotBlank() && model.displayName != model.modelId) {
+                                            Text(
+                                                text = model.modelId,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
+}
+
+@Composable
 fun ProviderCard(
     provider: ProviderSetting,
     activeProviderId: String?,
     activeModelId: String?,
     onUpdate: (ProviderSetting) -> Unit,
     onDelete: () -> Unit,
-    onSelectModel: (String) -> Unit
+    onOpenModelSelection: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -220,14 +360,8 @@ fun ProviderCard(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    if (provider.enabled) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Enabled",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.height(16.dp)
-                        )
-                    }
+                    // Removed the Icon(Icons.Default.Check, ...) block as requested
+                    
                     // Show active model badge if applicable
                     if (provider.id == activeProviderId) {
                         Spacer(modifier = Modifier.width(8.dp))
@@ -259,9 +393,7 @@ fun ProviderCard(
                 }
             }
             
-            // Always show models if expanded, or if it's the active provider (optional, maybe just stick to expanded)
-            // Let's just use expanded for details.
-
+            // Details Section
             AnimatedVisibility(visible = expanded) {
                 Column(modifier = Modifier.padding(top = 16.dp)) {
                     // Edit fields
@@ -320,33 +452,34 @@ fun ProviderCard(
                                             val models = openAIProvider.listModels(tempSetting)
                                             
                                             onUpdate(tempSetting.copy(name = name, models = models))
-                                            Toast.makeText(context, "Connected! Found ${models.size} models.", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "已刷新! 发现 ${models.size} 个模型", Toast.LENGTH_SHORT).show()
                                         } else if (tempSetting is ProviderSetting.Ollama) {
                                             val client = OkHttpClient()
                                             val ollamaProvider = OllamaProvider(client)
                                             val models = ollamaProvider.listModels(tempSetting)
                                             
                                             onUpdate(tempSetting.copy(name = name, models = models))
-                                            Toast.makeText(context, "Connected! Found ${models.size} models.", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "已刷新! 发现 ${models.size} 个模型", Toast.LENGTH_SHORT).show()
                                         } else if (tempSetting is ProviderSetting.Google) {
                                             val client = OkHttpClient()
                                             val googleProvider = GoogleProvider(client)
                                             val models = googleProvider.listModels(tempSetting)
                                             
                                             onUpdate(tempSetting.copy(name = name, models = models))
-                                            Toast.makeText(context, "Connected! Added Gemini models.", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "已刷新! 添加了 Gemini 模型", Toast.LENGTH_SHORT).show()
                                         } else {
                                              Toast.makeText(context, "Test not supported for this type yet.", Toast.LENGTH_SHORT).show()
                                         }
                                     } catch (e: Exception) {
                                         e.printStackTrace()
-                                        Toast.makeText(context, "Connection Failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, "连接失败: ${e.message}", Toast.LENGTH_LONG).show()
                                     } finally {
                                         isTesting = false
                                     }
                                 }
                             },
-                            enabled = !isTesting
+                            // Disabled if testing OR provider is NOT enabled
+                            enabled = !isTesting && provider.enabled
                         ) {
                             if (isTesting) {
                                 CircularProgressIndicator(
@@ -355,38 +488,41 @@ fun ProviderCard(
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Testing...")
+                                Text("测试中...")
                             } else {
                                 Icon(Icons.Default.Refresh, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Test & Save")
+                                Text("测试 & 保存")
                             }
                         }
                     }
                     
-                    // Models List with Selection
-                    if (provider.models.isNotEmpty()) {
+                    // Hide model selection if disabled
+                    if (provider.enabled) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text("Available Models:", style = MaterialTheme.typography.titleSmall)
-                        Column(modifier = Modifier.padding(top = 8.dp)) {
-                            provider.models.forEach { model ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onSelectModel(model.modelId) }
-                                        .padding(vertical = 4.dp)
-                                ) {
-                                    RadioButton(
-                                        selected = (provider.id == activeProviderId && model.modelId == activeModelId),
-                                        onClick = { onSelectModel(model.modelId) }
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(text = model.displayName, style = MaterialTheme.typography.bodyMedium)
-                                        Text(text = model.modelId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Model Selection Trigger
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column {
+                                Text("模型列表", style = MaterialTheme.typography.titleMedium)
+                                Text("${provider.models.size} 个模型可用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                
+                                if (provider.id == activeProviderId && !activeModelId.isNullOrEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("当前: $activeModelId", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 }
+                            }
+                            
+                            OutlinedButton(onClick = onOpenModelSelection) {
+                                Icon(Icons.Default.List, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("选择模型")
                             }
                         }
                     }
@@ -394,4 +530,24 @@ fun ProviderCard(
             }
         }
     }
+}
+
+private fun getModelGroup(modelId: String): String {
+    if (modelId.contains(":")) {
+        return modelId.substringBefore(":").uppercase()
+    }
+    val parts = modelId.split("-")
+    if (parts.isEmpty()) return modelId.uppercase()
+
+    val first = parts[0]
+    if (parts.size >= 2) {
+        val second = parts[1]
+        if (second.isNotEmpty() && second[0].isDigit()) {
+            return first.uppercase()
+        }
+        if (first.equals("gpt", ignoreCase = true)) {
+            return "$first-$second".uppercase()
+        }
+    }
+    return first.uppercase()
 }
