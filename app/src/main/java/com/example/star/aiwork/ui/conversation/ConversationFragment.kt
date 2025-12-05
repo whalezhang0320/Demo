@@ -168,6 +168,9 @@ class ConversationFragment : Fragment() {
                 LaunchedEffect(currentSession?.id) {
                     currentSession?.let { session ->
                         // 使用同一个 uiState 实例，确保一致性
+                        // uiState 是从缓存中获取的，所以 isGenerating、isRecording、textFieldValue 等
+                        // 会话级别的状态字段会自动从缓存中恢复，不需要重置
+                        
                         // 清空现有消息
                         while (uiState.messages.isNotEmpty()) {
                             uiState.removeFirstMessage()
@@ -178,13 +181,9 @@ class ConversationFragment : Fragment() {
                         }
                         // 更新 channelName
                         uiState.channelName = session.name.ifBlank { "新对话" }
-                        // 重置会话级别的 UI 状态字段
-                        uiState.textFieldValue = TextFieldValue()
-                        uiState.selectedImageUri = null
-                        uiState.isRecording = false
-                        uiState.isTranscribing = false
-                        uiState.pendingTranscription = ""
-                        uiState.isGenerating = false
+                        // 注意：isGenerating、isRecording、isTranscribing、pendingTranscription、
+                        // textFieldValue、selectedImageUri 等字段会从缓存的 ConversationUiState 中
+                        // 自动恢复，保持每个会话的独立状态
                     }
                 }
 
