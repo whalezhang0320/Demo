@@ -186,85 +186,86 @@ class ConversationLogic(
         // Session management (New Chat / Rename)
         if (isNewChat(sessionId)) {
             onPersistNewChatSession(sessionId)
-        }
-        // ADDED: Auto-rename session logic using GenerateChatNameUseCase
-        if (!isAutoTriggered && (uiState.channelName == "New Chat" || uiState.channelName == "新聊天" || uiState.channelName == "新会话" || uiState.channelName == "new chat") && uiState.messages.none { it.author == authorMe }) {
-            if (generateChatNameUseCase != null && providerSetting != null && model != null) {
-                // 使用GenerateChatNameUseCase生成标题
-                streamingScope.launch(Dispatchers.IO) {
-                    try {
+            
+            // ADDED: Auto-rename session logic using GenerateChatNameUseCase
+            // 只有在新聊天且是第一条用户消息时才自动重命名
+            if (!isAutoTriggered && (uiState.channelName == "New Chat" || uiState.channelName == "新聊天" || uiState.channelName == "新会话" || uiState.channelName == "new chat") && uiState.messages.none { it.author == authorMe }) {
+                if (generateChatNameUseCase != null && providerSetting != null && model != null) {
+                    // 使用GenerateChatNameUseCase生成标题
+                    streamingScope.launch(Dispatchers.IO) {
+                        try {
                         val titleFlow = generateChatNameUseCase(
                             userMessage = inputContent,
                             providerSetting = providerSetting,
                             model = model
                         )
                         
-                        var generatedTitle = StringBuilder()
-                        titleFlow
-                            .onCompletion { 
-                                // 流完成后，持久化生成的标题
-                                val finalTitle = generatedTitle.toString().trim()
-                                if (finalTitle.isNotBlank()) {
-                                    // 限制标题长度，避免过长
-                                    val trimmedTitle = finalTitle.take(30).trim()
-                                    withContext(Dispatchers.Main) {
-                                        // 确保UI显示最终处理后的标题（可能和流过程中的显示略有不同）
-                                        uiState.channelName = trimmedTitle
-                                        // 持久化标题到数据库
-                                        onRenameSession(sessionId, trimmedTitle)
-                                        onSessionUpdated(sessionId)
-                                        Log.d("ConversationLogic", "✅ [Auto-Rename] AI生成标题持久化完成: $trimmedTitle")
-                                    }
-                                } else {
-                                    // 如果AI生成失败，回退到简单截取
-                                    val fallbackTitle = inputContent.take(20).trim()
-                                    if (fallbackTitle.isNotBlank()) {
+                            var generatedTitle = StringBuilder()
+                            titleFlow
+                                .onCompletion { 
+                                    // 流完成后，持久化生成的标题
+                                    val finalTitle = generatedTitle.toString().trim()
+                                    if (finalTitle.isNotBlank()) {
+                                        // 限制标题长度，避免过长
+                                        val trimmedTitle = finalTitle.take(30).trim()
                                         withContext(Dispatchers.Main) {
-                                            // 更新UI显示
-                                            uiState.channelName = fallbackTitle
+                                            // 确保UI显示最终处理后的标题（可能和流过程中的显示略有不同）
+                                            uiState.channelName = trimmedTitle
                                             // 持久化标题到数据库
-                                            onRenameSession(sessionId, fallbackTitle)
+                                            onRenameSession(sessionId, trimmedTitle)
                                             onSessionUpdated(sessionId)
-                                            Log.d("ConversationLogic", "✅ [Auto-Rename] 回退标题完成: $fallbackTitle")
+                                            Log.d("ConversationLogic", "✅ [Auto-Rename] AI生成标题持久化完成: $trimmedTitle")
+                                        }
+                                    } else {
+                                        // 如果AI生成失败，回退到简单截取
+                                        val fallbackTitle = inputContent.take(20).trim()
+                                        if (fallbackTitle.isNotBlank()) {
+                                            withContext(Dispatchers.Main) {
+                                                // 更新UI显示
+                                                uiState.channelName = fallbackTitle
+                                                // 持久化标题到数据库
+                                                onRenameSession(sessionId, fallbackTitle)
+                                                onSessionUpdated(sessionId)
+                                                Log.d("ConversationLogic", "✅ [Auto-Rename] 回退标题完成: $fallbackTitle")
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            .collect { chunk ->
-                                // 实时更新UI中的标题显示（不等待流结束）
-                                generatedTitle.append(chunk)
-                                val currentTitle = generatedTitle.toString().trim()
-                                if (currentTitle.isNotBlank()) {
-                                    // 限制显示长度，避免过长
-                                    val displayTitle = currentTitle.take(30).trim()
-                                    withContext(Dispatchers.Main) {
-                                        uiState.channelName = displayTitle
+                                .collect { chunk ->
+                                    // 实时更新UI中的标题显示（不等待流结束）
+                                    generatedTitle.append(chunk)
+                                    val currentTitle = generatedTitle.toString().trim()
+                                    if (currentTitle.isNotBlank()) {
+                                        // 限制显示长度，避免过长
+                                        val displayTitle = currentTitle.take(30).trim()
+                                        withContext(Dispatchers.Main) {
+                                            uiState.channelName = displayTitle
+                                        }
                                     }
                                 }
-                            }
-                    } catch (e: Exception) {
-                        // 如果生成标题失败，回退到简单截取
-                        Log.e("ConversationLogic", "❌ [Auto-Rename] AI生成标题失败: ${e.message}", e)
-                        val fallbackTitle = inputContent.take(20).trim()
-                        if (fallbackTitle.isNotBlank()) {
-                            withContext(Dispatchers.Main) {
-                                // 更新UI显示
-                                uiState.channelName = fallbackTitle
-                                // 持久化标题到数据库
-                                onRenameSession(sessionId, fallbackTitle)
-                                onSessionUpdated(sessionId)
-                                Log.d("ConversationLogic", "✅ [Auto-Rename] 回退标题完成: $fallbackTitle")
+                        } catch (e: Exception) {
+                            // 如果生成标题失败，回退到简单截取
+                            Log.e("ConversationLogic", "❌ [Auto-Rename] AI生成标题失败: ${e.message}", e)
+                            val fallbackTitle = inputContent.take(20).trim()
+                            if (fallbackTitle.isNotBlank()) {
+                                withContext(Dispatchers.Main) {
+                                    // 更新UI显示
+                                    uiState.channelName = fallbackTitle
+                                    // 持久化标题到数据库
+                                    onRenameSession(sessionId, fallbackTitle)
+                                    onSessionUpdated(sessionId)
+                                    Log.d("ConversationLogic", "✅ [Auto-Rename] 回退标题完成: $fallbackTitle")
+                                }
                             }
                         }
+                } else {
+                    // 如果没有提供GenerateChatNameUseCase，使用简单的截取方式
+                    val newTitle = inputContent.take(20).trim()
+                    if (newTitle.isNotBlank()) {
+                        onRenameSession(sessionId, newTitle)
+                        onSessionUpdated(sessionId)
+                        Log.d("ConversationLogic", "✅ [Auto-Rename] 简单标题完成，已调用 onSessionUpdated")
                     }
-                }
-            } else {
-                // 如果没有提供GenerateChatNameUseCase，使用简单的截取方式
-                val newTitle = inputContent.take(20).trim()
-                if (newTitle.isNotBlank()) {
-                    onRenameSession(sessionId, newTitle)
-                    onSessionUpdated(sessionId)
-                    Log.d("ConversationLogic", "✅ [Auto-Rename] 简单标题完成，已调用 onSessionUpdated")
                 }
             }
         }
