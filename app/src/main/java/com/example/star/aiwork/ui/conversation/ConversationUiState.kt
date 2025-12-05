@@ -84,6 +84,9 @@ class ConversationUiState(
 
     // AI 生成状态
     var isGenerating: Boolean by mutableStateOf(false) // 新增：是否正在生成回答
+    
+    // 流式生成任务状态
+    var activeTaskId: String? by mutableStateOf(null) // 新增：当前活跃的流式生成任务ID
 
     // 输入框文本状态
     var textFieldValue: TextFieldValue by mutableStateOf(TextFieldValue())

@@ -59,10 +59,10 @@ class ConversationLogic(
     private val onRenameSession: (sessionId: String, newName: String) -> Unit,
     private val onPersistNewChatSession: suspend (sessionId: String) -> Unit = { },
     private val isNewChat: (sessionId: String) -> Boolean = { false },
-    private val onSessionUpdated: suspend (sessionId: String) -> Unit = { }
+    private val onSessionUpdated: suspend (sessionId: String) -> Unit = { },
+    private val taskManager: StreamingTaskManager? = null
 ) {
 
-    private var activeTaskId: String? = null
     // 用于保存流式收集协程的 Job，以便可以立即取消
     private var streamingJob: Job? = null
     // 用于保存提示消息流式显示的 Job，以便可以立即取消
@@ -71,6 +71,7 @@ class ConversationLogic(
     private val streamingScope: CoroutineScope = uiState.coroutineScope
     // 标记是否已被取消，用于非流式模式下避免显示已收集的内容
     @Volatile private var isCancelled = false
+    
 
     // Handlers
     private val imageGenerationHandler = ImageGenerationHandler(
@@ -117,6 +118,9 @@ class ConversationLogic(
         hintTypingJob?.cancel() // 取消提示消息的流式显示
         hintTypingJob = null
         
+        // 通过任务管理器取消任务（即使 ConversationLogic 重新创建也能取消）
+        taskManager?.cancelTasks(sessionId)
+        
         // 根据流式模式决定处理方式
         val currentContent: String
         withContext(Dispatchers.Main) {
@@ -146,20 +150,21 @@ class ConversationLogic(
             )
         }
         
-        val taskId = activeTaskId
+        // 使用 uiState 中保存的 activeTaskId（即使 ConversationLogic 重新创建也能恢复）
+        val taskId = uiState.activeTaskId
         if (taskId != null) {
             // 无论成功还是失败，都要清除状态
             pauseStreamingUseCase(taskId).fold(
                 onSuccess = {
-                    activeTaskId = null
                     withContext(Dispatchers.Main) {
+                        uiState.activeTaskId = null
                         uiState.isGenerating = false
                     }
                 },
                 onFailure = { error ->
                     // 取消失败时也清除状态，但不显示错误（取消操作本身不应该报错）
-                    activeTaskId = null
                     withContext(Dispatchers.Main) {
+                        uiState.activeTaskId = null
                         uiState.isGenerating = false
                     }
                     // 记录日志但不显示给用户
@@ -258,6 +263,7 @@ class ConversationLogic(
                                 }
                             }
                         }
+                    }
                 } else {
                     // 如果没有提供GenerateChatNameUseCase，使用简单的截取方式
                     val newTitle = inputContent.take(20).trim()
@@ -346,7 +352,10 @@ class ConversationLogic(
                     params = params
                 )
 
-                activeTaskId = sendResult.taskId
+                // 保存 taskId 到 uiState 中，这样即使 ConversationLogic 重新创建也能恢复
+                withContext(Dispatchers.Main) {
+                    uiState.activeTaskId = sendResult.taskId
+                }
                 isCancelled = false
 
                 // Streaming Response Handling
@@ -357,12 +366,19 @@ class ConversationLogic(
                     onJobCreated = { job, hintJob ->
                         streamingJob = job
                         hintTypingJob = hintJob
+                        // 注册任务到任务管理器，以便在 ConversationLogic 重新创建后仍能取消
+                        taskManager?.registerTasks(sessionId, job, hintJob)
                     }
                 )
 
                 // Clear Jobs references after completion
                 streamingJob = null
                 hintTypingJob = null
+                taskManager?.removeTasks(sessionId)
+                // 清除活跃任务ID
+                withContext(Dispatchers.Main) {
+                    uiState.activeTaskId = null
+                }
 
                 // --- Auto-Loop Logic with Planner ---
                 if (uiState.isAutoLoopEnabled && loopCount < uiState.maxLoopCount && fullResponse.isNotBlank()) {
@@ -404,9 +420,12 @@ class ConversationLogic(
         if (e is CancellationException || isCancellationRelatedException(e)) {
             Log.d("ConversationLogic", "⚠️ Error is cancellation related, ignoring.")
             withContext(Dispatchers.Main) {
+                uiState.activeTaskId = null
                 uiState.isGenerating = false
                 uiState.updateLastMessageLoadingState(false)
             }
+            // 清除任务管理器中的任务引用
+            taskManager?.removeTasks(sessionId)
             return
         }
 
@@ -490,6 +509,7 @@ class ConversationLogic(
 
         Log.e("ConversationLogic", "❌ No fallback triggered. Displaying error message.")
         withContext(Dispatchers.Main) {
+            uiState.activeTaskId = null
             uiState.updateLastMessageLoadingState(false)
             uiState.isGenerating = false
             // 如果是重试产生的空消息（或第一次尝试），且内容为空，移除它
@@ -504,6 +524,8 @@ class ConversationLogic(
                 Message("System", errorMessage, timeNow)
             )
         }
+        // 清除任务管理器中的任务引用
+        taskManager?.removeTasks(sessionId)
         e.printStackTrace()
     }
     
@@ -523,9 +545,14 @@ class ConversationLogic(
             onJobCreated = { job, hintJob ->
                 streamingJob = job
                 hintTypingJob = hintJob
+                // 注册任务到任务管理器
+                taskManager?.registerTasks(sessionId, job, hintJob)
             },
             onTaskIdUpdated = { taskId ->
-                activeTaskId = taskId
+                // 保存 taskId 到 uiState 中（在挂起函数回调中，可以直接使用 withContext）
+                withContext(Dispatchers.Main) {
+                    uiState.activeTaskId = taskId
+                }
             }
         )
     }
