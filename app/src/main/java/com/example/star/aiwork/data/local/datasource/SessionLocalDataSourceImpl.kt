@@ -25,8 +25,11 @@ class SessionLocalDataSourceImpl(context: Context) : SessionLocalDataSource {
         sessionDao.deleteSession(id)
     }
 
+    override suspend fun deleteAllSessions() {
+        sessionDao.deleteAllSessions()
+    }
+
     override fun searchSessions(query: String): Flow<List<SessionEntity>> {
-        val searchQuery = "%$query%"
-        return sessionDao.searchSessions(searchQuery)
+        return sessionDao.searchSessions(query)
     }
 }

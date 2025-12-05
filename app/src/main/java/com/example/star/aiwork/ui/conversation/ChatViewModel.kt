@@ -112,6 +112,10 @@ class ChatViewModel(
         return uiStateCache.get(sessionId)
     }
 
+    fun clearAllUiStates() {
+        uiStateCache.clear()
+    }
+
     init {
         loadSessions()
         // 启动时如果没有当前会话，创建一个临时会话
@@ -462,4 +466,3 @@ class ChatViewModel(
         }
     }
 }
-

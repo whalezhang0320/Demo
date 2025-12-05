@@ -97,6 +97,10 @@ class NavActivity : AppCompatActivity() {
                     // 删除确认对话框状态
                     var sessionToDelete by remember { mutableStateOf<SessionEntity?>(null) }
 
+                    // 删除所有会话确认对话框状态
+                    var showDeleteAllSessionsDialog by remember { mutableStateOf(false) }
+
+
                     // PDF 选择器
                     val pdfLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.GetContent()
@@ -260,6 +264,9 @@ class NavActivity : AppCompatActivity() {
                                 sessionToDelete = session
                             }
                         },
+                        onDeleteAllSessions = {
+                            showDeleteAllSessionsDialog = true
+                        },
                         onRagEnabledChanged = { isEnabled ->
                             mainViewModel.updateRagEnabled(isEnabled)
                         }
@@ -292,6 +299,19 @@ class NavActivity : AppCompatActivity() {
                                     chatViewModel.deleteSession(session.id)
                                 }
                                 sessionToDelete = null
+                            }
+                        )
+                    }
+
+                    if (showDeleteAllSessionsDialog) {
+                        DeleteSessionDialog(
+                            sessionName = "所有会话",
+                            onDismiss = { showDeleteAllSessionsDialog = false },
+                            onConfirm = {
+                                mainViewModel.deleteAllSessions()
+                                chatViewModel.clearAllUiStates() // 清空UI状态缓存
+                                chatViewModel.createTemporarySession("新聊天")
+                                showDeleteAllSessionsDialog = false
                             }
                         )
                     }

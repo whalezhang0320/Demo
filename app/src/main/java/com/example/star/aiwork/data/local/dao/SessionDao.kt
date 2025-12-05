@@ -20,6 +20,9 @@ interface SessionDao {
     @Query("DELETE FROM sessions WHERE id = :sessionId")
     suspend fun deleteSession(sessionId: String)
 
+    @Query("DELETE FROM sessions")
+    suspend fun deleteAllSessions()
+
     @Query("""
         SELECT * FROM sessions WHERE id IN (
             SELECT id FROM sessions WHERE rowid IN (

@@ -98,6 +98,7 @@ fun JetchatDrawer(
     onArchiveSession: (String) -> Unit = { },
     onPinSession: (String) -> Unit = { },
     onDeleteSession: (String) -> Unit = { },
+    onDeleteAllSessions: () -> Unit = { },
     onRagEnabledChanged: (Boolean) -> Unit = { },
     agents: List<Agent> = emptyList(),
     sessions: List<SessionEntity> = emptyList(),
@@ -124,6 +125,7 @@ fun JetchatDrawer(
                         onArchiveSession = onArchiveSession,
                         onPinSession = onPinSession,
                         onDeleteSession = onDeleteSession,
+                        onDeleteAllSessions = onDeleteAllSessions,
                         onRagEnabledChanged = onRagEnabledChanged,
                         agents = agents,
                         sessions = sessions,
@@ -168,6 +170,7 @@ fun JetchatDrawerContent(
     onArchiveSession: (String) -> Unit,
     onPinSession: (String) -> Unit,
     onDeleteSession: (String) -> Unit,
+    onDeleteAllSessions: () -> Unit,
     onRagEnabledChanged: (Boolean) -> Unit,
     agents: List<Agent>,
     sessions: List<SessionEntity>,
@@ -248,6 +251,7 @@ fun JetchatDrawerContent(
         }
 
         DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
+        
         // 将会话分为置顶和非置顶两部分
         val (pinnedSessions, unpinnedSessions) = remember(sessions) {
             val filteredSessions = sessions.filter { !it.archived }
@@ -284,7 +288,27 @@ fun JetchatDrawerContent(
 
         // 显示非置顶会话区域
         if (unpinnedSessions.isNotEmpty()) {
-            DrawerItemHeader("聊天")
+             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp),
+                verticalAlignment = CenterVertically
+            ) {
+                Text(
+                    text = "聊天",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                     modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDeleteAllSessions) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "删除所有会话",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
             unpinnedSessions.forEach { session ->
                 ChatItem(
                     text = session.name,
@@ -770,6 +794,7 @@ fun DrawerPreview() {
                     onArchiveSession = {},
                     onPinSession = {},
                     onDeleteSession = {},
+                    onDeleteAllSessions = {},
                     onRagEnabledChanged = {},
                     agents = emptyList(),
                     sessions = emptyList(),
@@ -804,6 +829,7 @@ fun DrawerPreviewDark() {
                     onArchiveSession = {},
                     onPinSession = {},
                     onDeleteSession = {},
+                    onDeleteAllSessions = {},
                     onRagEnabledChanged = {},
                     agents = emptyList(),
                     sessions = emptyList(),

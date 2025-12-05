@@ -27,8 +27,10 @@ import com.example.star.aiwork.data.AgentRepository
 import com.example.star.aiwork.data.UserPreferencesRepository
 import com.example.star.aiwork.data.database.AppDatabase
 import com.example.star.aiwork.data.database.LocalRAGService
+import com.example.star.aiwork.data.local.datasource.SessionLocalDataSourceImpl
 import com.example.star.aiwork.domain.model.Agent
 import com.example.star.aiwork.domain.model.ProviderSetting
+import com.example.star.aiwork.domain.usecase.session.DeleteAllSessionsUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -52,7 +54,8 @@ import kotlinx.coroutines.launch
 class MainViewModel(
     private val userPreferencesRepository: UserPreferencesRepository,
     private val agentRepository: AgentRepository,
-    val ragService: LocalRAGService
+    val ragService: LocalRAGService,
+    private val deleteAllSessionsUseCase: DeleteAllSessionsUseCase
 ) : ViewModel() {
 
     // 侧边栏状态流
@@ -320,6 +323,12 @@ class MainViewModel(
             userPreferencesRepository.updateRagEnabled(isEnabled)
         }
     }
+
+    fun deleteAllSessions() {
+        viewModelScope.launch {
+            deleteAllSessionsUseCase()
+        }
+    }
     
     /**
      * 检索知识库中的相关上下文
@@ -356,10 +365,14 @@ class MainViewModel(
                 
                 val ragService = LocalRAGService(application, db.knowledgeDao())
 
+                val sessionLocalDataSource = SessionLocalDataSourceImpl(application)
+                val deleteAllSessionsUseCase = DeleteAllSessionsUseCase(sessionLocalDataSource)
+
                 return MainViewModel(
                     UserPreferencesRepository(application),
                     AgentRepository(application),
-                    ragService
+                    ragService,
+                    deleteAllSessionsUseCase
                 ) as T
             }
         }
