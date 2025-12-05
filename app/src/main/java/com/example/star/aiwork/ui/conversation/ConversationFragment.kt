@@ -54,6 +54,8 @@ import com.example.star.aiwork.domain.usecase.SendMessageUseCase
 import com.example.star.aiwork.infra.network.SseClient
 import com.example.star.aiwork.infra.network.defaultOkHttpClient
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filter
 import java.util.UUID
 
 class ConversationFragment : Fragment() {
@@ -168,28 +170,46 @@ class ConversationFragment : Fragment() {
                     }
                 }
 
-                // 只在会话切换时，从数据库同步消息到 UI 状态
-                // 注意：不在消息内容变化时同步，以避免清空临时的加载占位消息
+                // 只在会话切换时，从数据库同步消息到 UI 状态（仅在 uiState 中没有消息时）
+                // uiState 是从缓存中获取的，如果它已经包含消息（之前加载过），则直接使用
+                // 只有当 uiState.messages 为空时（新会话或首次加载），才从数据库加载
+                // 这样可以保留正在流式生成的消息（临时状态），避免不必要的清空和重新加载
                 LaunchedEffect(currentSession?.id) {
                     currentSession?.let { session ->
                         // 使用同一个 uiState 实例，确保一致性
-                        // 清空现有消息
-                        while (uiState.messages.isNotEmpty()) {
-                            uiState.removeFirstMessage()
+                        // uiState 是从缓存中获取的，所以 isGenerating、isRecording、textFieldValue 等
+                        // 会话级别的状态字段会自动从缓存中恢复，不需要重置
+                        
+                        // 只有当 uiState 中没有消息时，才从数据库加载
+                        // 如果 uiState 中已有消息，说明这个会话之前已经被加载过，直接使用即可
+                        if (uiState.messages.isEmpty()) {
+                            // 等待 messagesFromDb 异步更新到当前会话
+                            // 通过 Flow 等待消息更新，确保获取的是当前会话的消息，而不是旧会话的消息
+                            val latestMessagesFromFlow = chatViewModel.messages
+                                .filter { messages ->
+                                    // 等待消息更新：要么所有消息都属于当前会话，要么列表为空（新会话）
+                                    messages.all { it.sessionId == session.id } || messages.isEmpty()
+                                }
+                                .first() // 等待第一次符合条件的更新
+                            
+                            // 转换消息并添加到 UI 状态
+                            latestMessagesFromFlow
+                                .filter { it.sessionId == session.id } // 双重验证，确保消息属于当前会话
+                                .map { entity ->
+                                    convertMessageEntityToMessage(entity)
+                                }
+                                .forEach { msg ->
+                                    uiState.addMessage(msg)
+                                }
                         }
-                        // 添加数据库中的消息
-                        convertedMessages.forEach { msg ->
-                            uiState.addMessage(msg)
-                        }
+                        // 如果 uiState.messages 不为空，说明消息已经在 uiState 中（从缓存恢复），
+                        // processMessage 和 Regenerate 也会更新 uiState 中的消息，所以不需要重新加载
+                        
                         // 更新 channelName
                         uiState.channelName = session.name.ifBlank { "新对话" }
-                        // 重置会话级别的 UI 状态字段
-                        uiState.textFieldValue = TextFieldValue()
-                        uiState.selectedImageUri = null
-                        uiState.isRecording = false
-                        uiState.isTranscribing = false
-                        uiState.pendingTranscription = ""
-                        uiState.isGenerating = false
+                        // 注意：isGenerating、isRecording、isTranscribing、pendingTranscription、
+                        // textFieldValue、selectedImageUri 等字段会从缓存的 ConversationUiState 中
+                        // 自动恢复，保持每个会话的独立状态
                     }
                 }
 

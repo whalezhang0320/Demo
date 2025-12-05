@@ -216,11 +216,12 @@ class ChatViewModel(
      */
     fun updateSessionAgent(sessionId: String, agentId: String?) {
         viewModelScope.launch {
+            // 优先使用 currentSession，如果不是当前会话则从数据库查询
             val session = if (_currentSession.value?.id == sessionId) {
                 _currentSession.value
             } else {
-                // 如果不是当前会话，需要从列表中查找（或者从数据库重新加载，这里简化为查找当前列表）
-                _sessions.value.find { it.id == sessionId }
+                // 从数据库查询会话（更可靠，不依赖内存中的 sessions 列表）
+                getSessionListUseCase().firstOrNull()?.find { it.id == sessionId }
             }
 
             if (session != null) {
@@ -312,6 +313,7 @@ class ChatViewModel(
         }
     }
 
+    @Deprecated("Use StreamingResponseHandler instead")
     fun sendMessage(content: String) {
         val session = _currentSession.value ?: return
         viewModelScope.launch {
@@ -348,6 +350,7 @@ class ChatViewModel(
         }
     }
 
+    @Deprecated("use RollbackHandler instead")
     fun rollbackLastMessage() {
         val session = _currentSession.value ?: return
         viewModelScope.launch {
@@ -413,8 +416,8 @@ class ChatViewModel(
         if (session != null && session.id == sessionId && _newChatSessions.value.contains(sessionId)) {
             // 持久化会话
             createSessionUseCase(session)
-            // 更新会话列表
-            _sessions.value = _sessions.value + session
+            // 注意：不需要手动更新 _sessions，因为 loadSessions() 已经订阅了 getSessionListUseCase() 的 Flow
+            // 数据库更新后，Flow 会自动触发更新，_sessions 会自动更新
             // 取消isNewChat标记
             _newChatSessions.value = _newChatSessions.value - sessionId
         }
