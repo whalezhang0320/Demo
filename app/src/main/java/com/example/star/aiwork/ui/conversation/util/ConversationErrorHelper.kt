@@ -61,11 +61,23 @@ object ConversationErrorHelper {
 
     /**
      * 检查异常是否是取消操作相关的。
-     * 现在只有真正的 CancellationException 才是取消，其他 NetworkException 都是网络错误。
+     * 检查异常本身或其根本原因是否是 CancellationException。
      */
     fun isCancellationRelatedException(e: Exception): Boolean {
-        // 现在只有主动取消才会抛出 CancellationException
-        // NetworkException 都是网络相关的错误，不再当作取消处理
+        // 检查异常本身是否是 CancellationException
+        if (e is kotlinx.coroutines.CancellationException) {
+            return true
+        }
+        
+        // 检查异常的根本原因（cause）是否是 CancellationException
+        var cause: Throwable? = e.cause
+        while (cause != null) {
+            if (cause is kotlinx.coroutines.CancellationException) {
+                return true
+            }
+            cause = cause.cause
+        }
+        
         return false
     }
 }
