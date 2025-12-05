@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import java.util.*
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.debounce
 
 class ChatViewModel(
     private val getSessionListUseCase: GetSessionListUseCase,
@@ -58,9 +59,6 @@ class ChatViewModel(
     private val _searchResults = MutableStateFlow<List<SessionEntity>>(emptyList())
     val searchResults: StateFlow<List<SessionEntity>> = _searchResults.asStateFlow()
     
-    // 管理搜索任务的Job，用于取消之前的搜索任务
-    private var searchJob: Job? = null
-
     // 跟踪临时创建的会话（isNewChat标记）
     private val _newChatSessions = MutableStateFlow<Set<String>>(emptySet())
     val newChatSessions: StateFlow<Set<String>> = _newChatSessions.asStateFlow()
@@ -142,6 +140,23 @@ class ChatViewModel(
         if (_currentSession.value == null) {
             createTemporarySession("新聊天")
         }
+        
+        // 使用 debounce 和 flatMapLatest 操作符处理搜索查询，确保旧的搜索会被自动取消
+        viewModelScope.launch {
+            _searchQuery
+                .debounce(300L)
+                .distinctUntilChanged()
+                .flatMapLatest { query ->
+                    if (query.isBlank()) {
+                        flowOf(emptyList())
+                    } else {
+                        searchSessionsUseCase(query)
+                    }
+                }
+                .collect { results ->
+                    _searchResults.value = results
+                }
+        }
     }
 
     fun loadSessions() {
@@ -174,22 +189,6 @@ class ChatViewModel(
     
     fun searchSessions(query: String) {
         _searchQuery.value = query
-        
-        // 取消之前的搜索任务
-        searchJob?.cancel()
-        
-        if (query.isBlank()) {
-            // 如果查询为空，清空搜索结果
-            _searchResults.value = emptyList()
-            searchJob = null
-        } else {
-            // 搜索时更新搜索结果，不影响原始的sessions列表
-            searchJob = viewModelScope.launch {
-                searchSessionsUseCase(query).collect { list ->
-                    _searchResults.value = list
-                }
-            }
-        }
     }
 
     fun createSession(name: String) {

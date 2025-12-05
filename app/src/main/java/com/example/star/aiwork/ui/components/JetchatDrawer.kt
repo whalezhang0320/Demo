@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandLess
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -55,6 +57,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -184,6 +187,7 @@ fun JetchatDrawerContent(
     val scrollState = rememberScrollState()
     var isAgentsExpanded by remember { mutableStateOf(false) }
     var isKnowledgeExpanded by remember { mutableStateOf(false) }
+    var showArchivedSessions by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.verticalScroll(scrollState)
@@ -251,14 +255,17 @@ fun JetchatDrawerContent(
         }
 
         DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
+
+        val (archivedSessions, activeSessions) = remember(sessions) {
+            sessions.partition { it.archived }
+        }
         
         // 将会话分为置顶和非置顶两部分
-        val (pinnedSessions, unpinnedSessions) = remember(sessions) {
-            val filteredSessions = sessions.filter { !it.archived }
-            val pinned = filteredSessions
+        val (pinnedSessions, unpinnedSessions) = remember(activeSessions) {
+            val pinned = activeSessions
                 .filter { it.pinned }
                 .sortedByDescending { it.updatedAt } // 置顶会话按更新时间降序排序
-            val unpinned = filteredSessions
+            val unpinned = activeSessions
                 .filter { !it.pinned }
                 .sortedByDescending { it.updatedAt } // 非置顶会话按更新时间降序排序
             Pair(pinned, unpinned)
@@ -286,29 +293,39 @@ fun JetchatDrawerContent(
             DividerItem(modifier = Modifier.padding(horizontal = 30.dp))
         }
 
+        // "聊天" header, always visible
+         Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp),
+            verticalAlignment = CenterVertically
+        ) {
+            Text(
+                text = "聊天",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                 modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { showArchivedSessions = true }) {
+                Icon(
+                    imageVector = Icons.Default.Archive,
+                    contentDescription = "Archived Sessions",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            IconButton(onClick = onDeleteAllSessions) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "删除所有会话",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
         // 显示非置顶会话区域
         if (unpinnedSessions.isNotEmpty()) {
-             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 28.dp),
-                verticalAlignment = CenterVertically
-            ) {
-                Text(
-                    text = "聊天",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                     modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = onDeleteAllSessions) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "删除所有会话",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
             unpinnedSessions.forEach { session ->
                 ChatItem(
                     text = session.name,
@@ -321,11 +338,54 @@ fun JetchatDrawerContent(
                     onDelete = { onDeleteSession(session.id) }
                 )
             }
-        } else if (pinnedSessions.isEmpty()) {
-            // 如果没有任何会话，仍然显示 "Chats" 标题
-            DrawerItemHeader("聊天")
+        }
+
+        if (showArchivedSessions) {
+            ArchivedSessionsDialog(
+                archivedSessions = archivedSessions,
+                onDismiss = { showArchivedSessions = false },
+                onSessionClicked = { sessionId ->
+                    onArchiveSession(sessionId) // Unarchive
+                    onChatClicked(sessionId) // Load session
+                    showArchivedSessions = false
+                }
+            )
         }
     }
+}
+
+@Composable
+fun ArchivedSessionsDialog(
+    archivedSessions: List<SessionEntity>,
+    onDismiss: () -> Unit,
+    onSessionClicked: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Archived Sessions") },
+        text = {
+            Column {
+                if (archivedSessions.isEmpty()) {
+                    Text("No archived sessions.")
+                } else {
+                    archivedSessions.forEach { session ->
+                        Text(
+                            text = session.name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSessionClicked(session.id) }
+                                .padding(vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
 
 /**
