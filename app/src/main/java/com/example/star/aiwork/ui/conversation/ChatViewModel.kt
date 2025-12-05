@@ -84,6 +84,9 @@ class ChatViewModel(
     // 使用 LRU Cache 管理每个会话的 ConversationUiState，最多缓存 5 个
     private val uiStateCache = ConversationUiStateCache(maxSize = 5)
     
+    // 流式任务管理器，用于跟踪和管理每个会话的流式生成任务
+    val streamingTaskManager = StreamingTaskManager()
+    
     /**
      * 获取或创建指定会话的 ConversationUiState
      * 使用 LRU Cache 管理，当缓存满时会自动移除最久未使用的状态

@@ -32,7 +32,7 @@ class RollbackHandler(
         scope: CoroutineScope,
         isCancelledCheck: () -> Boolean,
         onJobCreated: (Job, Job?) -> Unit,
-        onTaskIdUpdated: (String?) -> Unit
+        onTaskIdUpdated: suspend (String?) -> Unit
     ) {
         if (providerSetting == null || model == null) {
             withContext(Dispatchers.Main) {

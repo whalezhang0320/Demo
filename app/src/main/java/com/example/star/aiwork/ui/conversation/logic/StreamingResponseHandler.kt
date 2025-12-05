@@ -96,11 +96,10 @@ class StreamingResponseHandler(
                     }
                 }
             } catch (streamError: CancellationException) {
-                if (!isCancelledCheck()) {
-                    logThrowableChain("StreamingHandler", "streamError during collect (cancelled)", streamError)
-                    // Wrap unexpected cancellation so it triggers error handling upstream
-                    capturedException = RuntimeException("Unexpected cancellation", streamError)
-                }
+                // 任何 CancellationException 都应该被正常处理，不应该被视为错误
+                // 无论是用户主动取消还是切换对话后取消，都应该静默处理
+                // 不记录为错误，也不向上抛出
+                // 如果 isCancelledCheck() 返回 false，说明可能是切换对话后的取消，这是正常的
             } catch (streamError: Exception) {
                 logThrowableChain("StreamingHandler", "streamError during collect", streamError)
                 // Capture the exception and throw it later to let ConversationLogic handle fallback
@@ -118,7 +117,11 @@ class StreamingResponseHandler(
             // Expected if cancelled
         }
 
-        hintTypingJob?.join()
+        try {
+            hintTypingJob?.join()
+        } catch (e: CancellationException) {
+            // Expected if cancelled
+        }
 
         // If an exception occurred during streaming, throw it now so ConversationLogic can handle fallback
         if (capturedException != null) {

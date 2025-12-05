@@ -84,6 +84,9 @@ class ConversationUiState(
 
     // AI 生成状态
     var isGenerating: Boolean by mutableStateOf(false) // 新增：是否正在生成回答
+    
+    // 流式生成任务状态
+    var activeTaskId: String? by mutableStateOf(null) // 新增：当前活跃的流式生成任务ID
 
     // 输入框文本状态
     var textFieldValue: TextFieldValue by mutableStateOf(TextFieldValue())
@@ -106,6 +109,14 @@ class ConversationUiState(
         if (_messages.isNotEmpty()) {
             _messages.removeAt(0)
         }
+    }
+
+    /**
+     * 清空所有消息。
+     * 用于在会话切换时清理不属于当前会话的消息。
+     */
+    fun clearMessages() {
+        _messages.clear()
     }
 
     /**

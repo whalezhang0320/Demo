@@ -165,7 +165,8 @@ class ConversationFragment : Fragment() {
                         onSessionUpdated = { sessionId ->
                             // 刷新会话列表，让 drawer 中的会话按 updatedAt 排序
                             chatViewModel.refreshSessions()
-                        }
+                        },
+                        taskManager = chatViewModel.streamingTaskManager
                     )
                 }
 
@@ -187,25 +188,47 @@ class ConversationFragment : Fragment() {
                         
                         // 只有当 uiState 中没有消息时，才从数据库加载
                         // 如果 uiState 中已有消息，说明这个会话之前已经被加载过，直接使用即可
-                        if (uiState.messages.isEmpty()) {
+                        val isTemporarySession = chatViewModel.isNewChat(session.id)
+                        val needsLoad = if (uiState.messages.isEmpty()) {
+                            !isTemporarySession
+                        } else {
+                            // 如果 uiState 不为空，检查消息数量是否与数据库一致
+                            // 对于临时会话，不需要检查数据库（因为临时会话的消息不在数据库中）
+                            if (isTemporarySession) {
+                                false // 临时会话的消息只在内存中，不需要从数据库加载
+                            } else {
+                                // 检查数据库中的消息数量是否与 uiState 中的消息数量一致
+                                // 如果不一致，说明需要重新加载（可能是从临时会话切换过来的）
+                                val messagesFromDb = chatViewModel.messages.value
+                                val currentSessionMessages = messagesFromDb.filter { it.sessionId == session.id }
+                                uiState.messages.size != currentSessionMessages.size
+                            }
+                        }
+                        if (needsLoad) {
+                            // 如果 uiState 中有消息但不属于当前会话，先清空
+                            if (uiState.messages.isNotEmpty()) {
+                                uiState.clearMessages()
+                            }
                             // 等待 messagesFromDb 异步更新到当前会话
                             // 通过 Flow 等待消息更新，确保获取的是当前会话的消息，而不是旧会话的消息
-                            val latestMessagesFromFlow = chatViewModel.messages
-                                .filter { messages ->
-                                    // 等待消息更新：要么所有消息都属于当前会话，要么列表为空（新会话）
-                                    messages.all { it.sessionId == session.id } || messages.isEmpty()
-                                }
-                                .first() // 等待第一次符合条件的更新
-                            
-                            // 转换消息并添加到 UI 状态
-                            latestMessagesFromFlow
-                                .filter { it.sessionId == session.id } // 双重验证，确保消息属于当前会话
-                                .map { entity ->
-                                    convertMessageEntityToMessage(entity)
-                                }
-                                .forEach { msg ->
-                                    uiState.addMessage(msg)
-                                }
+                            if (!isTemporarySession) {
+                                val latestMessagesFromFlow = chatViewModel.messages
+                                    .filter { messages ->
+                                        // 等待消息更新：要么所有消息都属于当前会话，要么列表为空（新会话）
+                                        messages.all { it.sessionId == session.id } || messages.isEmpty()
+                                    }
+                                    .first() // 等待第一次符合条件的更新
+                                
+                                // 转换消息并添加到 UI 状态
+                                latestMessagesFromFlow
+                                    .filter { it.sessionId == session.id } // 双重验证，确保消息属于当前会话
+                                    .map { entity ->
+                                        convertMessageEntityToMessage(entity)
+                                    }
+                                    .forEach { msg ->
+                                        uiState.addMessage(msg)
+                                    }
+                            }
                         }
                         // 如果 uiState.messages 不为空，说明消息已经在 uiState 中（从缓存恢复），
                         // processMessage 和 Regenerate 也会更新 uiState 中的消息，所以不需要重新加载
