@@ -54,6 +54,8 @@ import com.example.star.aiwork.domain.usecase.SendMessageUseCase
 import com.example.star.aiwork.infra.network.SseClient
 import com.example.star.aiwork.infra.network.defaultOkHttpClient
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filter
 import java.util.UUID
 
 class ConversationFragment : Fragment() {
@@ -181,18 +183,24 @@ class ConversationFragment : Fragment() {
                         // 只有当 uiState 中没有消息时，才从数据库加载
                         // 如果 uiState 中已有消息，说明这个会话之前已经被加载过，直接使用即可
                         if (uiState.messages.isEmpty()) {
-                            // 直接使用最新的 messagesFromDb 转换消息
-                            // 验证消息是否属于当前会话（防止时序问题导致使用旧会话的消息）
-                            val latestMessages = messagesFromDb
-                                .filter { it.sessionId == session.id } // 确保消息属于当前会话
+                            // 等待 messagesFromDb 异步更新到当前会话
+                            // 通过 Flow 等待消息更新，确保获取的是当前会话的消息，而不是旧会话的消息
+                            val latestMessagesFromFlow = chatViewModel.messages
+                                .filter { messages ->
+                                    // 等待消息更新：要么所有消息都属于当前会话，要么列表为空（新会话）
+                                    messages.all { it.sessionId == session.id } || messages.isEmpty()
+                                }
+                                .first() // 等待第一次符合条件的更新
+                            
+                            // 转换消息并添加到 UI 状态
+                            latestMessagesFromFlow
+                                .filter { it.sessionId == session.id } // 双重验证，确保消息属于当前会话
                                 .map { entity ->
                                     convertMessageEntityToMessage(entity)
                                 }
-                            
-                            // 添加数据库中的消息
-                            latestMessages.forEach { msg ->
-                                uiState.addMessage(msg)
-                            }
+                                .forEach { msg ->
+                                    uiState.addMessage(msg)
+                                }
                         }
                         // 如果 uiState.messages 不为空，说明消息已经在 uiState 中（从缓存恢复），
                         // processMessage 和 Regenerate 也会更新 uiState 中的消息，所以不需要重新加载
