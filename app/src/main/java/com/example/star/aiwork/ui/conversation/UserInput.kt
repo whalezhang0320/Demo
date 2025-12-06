@@ -29,7 +29,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -77,6 +77,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -482,7 +483,7 @@ private fun VoiceModeInput(
     // 手势状态
     var pressStartY by remember { mutableFloatStateOf(0f) }
     var currentY by remember { mutableFloatStateOf(0f) }
-    val cancelThreshold = 100.dp.value // 上滑取消阈值（像素）
+    val cancelThreshold = 100f // 上滑取消阈值（像素）
 
     Row(
         modifier = Modifier
@@ -505,30 +506,43 @@ private fun VoiceModeInput(
                     shape = RoundedCornerShape(26.dp)
                 )
                 .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            pressStartY = offset.y
-                            currentY = offset.y
+                    awaitPointerEventScope {
+                        while (true) {
+                            // ✅ 等待按下 - 立即触发
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            pressStartY = down.position.y
+                            currentY = down.position.y
+
+                            // ✅ 立即开始录音（不需要等待拖动）
                             onStartRecording()
                             onVoiceStageChanged(VoiceInputStage.RECORDING)
-                        },
-                        onDrag = { change, _ ->
-                            currentY = change.position.y
-                            val deltaY = pressStartY - currentY
 
-                            // 检测上滑
-                            if (deltaY > cancelThreshold) {
-                                onVoiceStageChanged(VoiceInputStage.CANCEL_WARNING)
-                            } else {
-                                if (voiceInputStage == VoiceInputStage.CANCEL_WARNING) {
-                                    onVoiceStageChanged(VoiceInputStage.RECORDING)
+                            // ✅ 跟踪手指移动
+                            do {
+                                val event = awaitPointerEvent()
+
+                                // 更新位置
+                                val pointer = event.changes.firstOrNull()
+                                if (pointer != null && !pointer.changedToUp()) {
+                                    currentY = pointer.position.y
+                                    val deltaY = pressStartY - currentY
+
+                                    // 检测上滑
+                                    if (deltaY > cancelThreshold) {
+                                        if (voiceInputStage != VoiceInputStage.CANCEL_WARNING) {
+                                            onVoiceStageChanged(VoiceInputStage.CANCEL_WARNING)
+                                        }
+                                    } else {
+                                        if (voiceInputStage == VoiceInputStage.CANCEL_WARNING) {
+                                            onVoiceStageChanged(VoiceInputStage.RECORDING)
+                                        }
+                                    }
                                 }
-                            }
-                        },
-                        onDragEnd = {
+                            } while (event.changes.any { !it.changedToUp() })
+
+                            // ✅ 松手后处理
                             onStopRecording()
 
-                            // 判断松手时的状态
                             if (voiceInputStage == VoiceInputStage.CANCEL_WARNING) {
                                 // 取消状态：清空并关闭
                                 onVoiceStageChanged(VoiceInputStage.IDLE)
@@ -536,12 +550,8 @@ private fun VoiceModeInput(
                                 // 正常结束：进入编辑状态
                                 onVoiceStageChanged(VoiceInputStage.EDITING)
                             }
-                        },
-                        onDragCancel = {
-                            onStopRecording()
-                            onVoiceStageChanged(VoiceInputStage.IDLE)
                         }
-                    )
+                    }
                 },
             contentAlignment = Alignment.Center
         ) {
