@@ -263,27 +263,7 @@ fun Message(
         modifier = spaceBetweenAuthors.fillMaxWidth(),
         horizontalArrangement = if (isUserMe) Arrangement.End else Arrangement.Start
     ) {
-        // 用户消息：右对齐，无头像
-        if (!isUserMe) {
-            // AI消息：左对齐，显示头像
-            if (isLastMessageByAuthor) {
-                Image(
-                    modifier = Modifier
-                        .clickable(onClick = { onAuthorClick(msg.author) })
-                        .padding(horizontal = 16.dp)
-                        .size(42.dp)
-                        .border(1.5.dp, borderColor, CircleShape)
-                        .border(3.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                        .clip(CircleShape)
-                        .align(Alignment.Top),
-                    painter = painterResource(id = msg.authorImage),
-                    contentScale = ContentScale.Crop,
-                    contentDescription = null,
-                )
-            } else {
-                Spacer(modifier = Modifier.width(74.dp))
-            }
-        }
+        // 删除了 AI 头像显示部分
 
         AuthorAndTextMessage(
             msg = msg,
@@ -299,8 +279,13 @@ fun Message(
             onMoreClick = onMoreClick,
             isGenerating = isGenerating,
             modifier = Modifier
-                .padding(end = if (isUserMe) 16.dp else 16.dp)
-                .widthIn(max = 300.dp)
+                .padding(
+                    end = if (isUserMe) 16.dp else 16.dp,
+                    start = if (isUserMe) 0.dp else 16.dp
+                )
+                .fillMaxWidth(
+                    fraction = if (isUserMe) 0.85f else 1.00f  // AI消息占屏幕宽度85%
+                )
         )
     }
 }
@@ -326,7 +311,7 @@ fun AuthorAndTextMessage(
 ) {
     Column(modifier = modifier) {
         if (isLastMessageByAuthor && !isUserMe) {
-            AuthorNameTimestamp(msg)
+            Timestamp(msg)
         }
         ChatItemBubble(msg, isUserMe, authorClicked = authorClicked)
         
@@ -427,19 +412,11 @@ fun AuthorAndTextMessage(
 }
 
 /**
- * 作者名和时间戳
+ * 时间戳
  */
 @Composable
-private fun AuthorNameTimestamp(msg: Message) {
+private fun Timestamp(msg: Message) {
     Row(modifier = Modifier.semantics(mergeDescendants = true) {}) {
-        Text(
-            text = msg.author,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .alignBy(LastBaseline)
-                .paddingFrom(LastBaseline, after = 8.dp),
-        )
-        Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = msg.timestamp,
             style = MaterialTheme.typography.bodySmall,
@@ -449,7 +426,14 @@ private fun AuthorNameTimestamp(msg: Message) {
     }
 }
 
-private val ChatBubbleShape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp)
+// 根据消息类型返回不同的气泡形状
+private fun getChatBubbleShape(isUserMe: Boolean): RoundedCornerShape {
+    return if (isUserMe) {
+        RoundedCornerShape(20.dp, 4.dp, 20.dp, 20.dp) // 用户消息：右上角直角
+    } else {
+        RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp) // AI消息：左上角直角
+    }
+}
 
 /**
  * 日期分隔线
@@ -513,12 +497,12 @@ fun ChatItemBubble(
     Column {
         Surface(
             color = backgroundBubbleColor,
-            shape = ChatBubbleShape,
+            shape = getChatBubbleShape(isUserMe),  // 修改这里
             shadowElevation = shadowElevation,
             modifier = Modifier.border(
                 width = 1.dp,
                 color = borderColor,
-                shape = ChatBubbleShape
+                shape = getChatBubbleShape(isUserMe)  // 修改这里
             )
         ) {
             Column {
@@ -543,12 +527,12 @@ fun ChatItemBubble(
             Spacer(modifier = Modifier.height(4.dp))
             Surface(
                 color = backgroundBubbleColor,
-                shape = ChatBubbleShape,
+                shape = getChatBubbleShape(isUserMe),  // 修改这里
                 shadowElevation = shadowElevation,
                 modifier = Modifier.border(
                     width = 1.dp,
                     color = borderColor,
-                    shape = ChatBubbleShape
+                    shape = getChatBubbleShape(isUserMe)  // 修改这里
                 )
             ) {
                 AsyncImage(
@@ -562,12 +546,12 @@ fun ChatItemBubble(
             Spacer(modifier = Modifier.height(4.dp))
             Surface(
                 color = backgroundBubbleColor,
-                shape = ChatBubbleShape,
+                shape = getChatBubbleShape(isUserMe),  // 修改这里
                 shadowElevation = shadowElevation,
                 modifier = Modifier.border(
                     width = 1.dp,
                     color = borderColor,
-                    shape = ChatBubbleShape
+                    shape = getChatBubbleShape(isUserMe)  // 修改这里
                 )
             ) {
                 Image(
