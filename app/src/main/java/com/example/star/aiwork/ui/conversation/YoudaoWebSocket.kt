@@ -33,9 +33,26 @@ class YoudaoWebSocket {
 
     private val appKey = "1fa9647ca43dd17a"
     private val appSecret = "adcF7pXU5MK2yfzVRN5OfJSSUVsIpLEg"
+    
+    // 默认发音人
+    var currentVoiceName = "youxiaozhi"
 
     var listener: TranscriptionListener? = null
     var ttsListener: TtsListener? = null
+    
+    /**
+     * 可用的发音人列表
+     * 键为发音人代号，值为显示名称
+     */
+    val availableVoices = mapOf(
+        "youxiaozhi" to "有小智 (男/常见语种)",
+        "youxiaoxun" to "有小薰 (女/常见语种)",
+        "youxiaoqin" to "有小沁 (女/常见语种)",
+        "youxiaofu" to "有小芙 (女/常见语种)",
+        "youyuting" to "有雨婷 (女/常见语种)",
+        "youxiaohao" to "有小浩 (男/常见语种)",
+        "youxiaonan" to "有小楠 (男/常见语种)"
+    )
 
     /**
      * 连接到有道语音识别服务
@@ -212,7 +229,7 @@ class YoudaoWebSocket {
      * @param text 待合成的文本
      */
     fun synthesize(text: String) {
-        Log.d(TAG, "🗣️ Starting TTS synthesis for: '$text'")
+        Log.d(TAG, "🗣️ Starting TTS synthesis for: '$text', voice: $currentVoiceName")
 
         val salt = UUID.randomUUID().toString()
         val curtime = (System.currentTimeMillis() / 1000).toString()
@@ -237,7 +254,7 @@ class YoudaoWebSocket {
             .add("format", "mp3")
             .add("speed", "1")
             .add("volume", "1.00")
-            .add("voiceName", "youxiaoqin")
+            .add("voiceName", currentVoiceName) // 使用当前选择的发音人
             .build()
 
         val request = Request.Builder()
