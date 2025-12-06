@@ -97,6 +97,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import android.util.Log
+import androidx.compose.runtime.LaunchedEffect
+import com.example.star.aiwork.domain.usecase.GenerateChatNameUseCase
+import kotlinx.coroutines.flow.onCompletion
 
 const val ConversationTestTag = "ConversationTestTag"
 
@@ -115,7 +118,8 @@ fun Messages(
     model: Model? = null,
     retrieveKnowledge: suspend (String) -> String = { "" },
     scope: CoroutineScope? = null,
-    isGenerating: Boolean = false
+    isGenerating: Boolean = false,
+    uiState: ConversationUiState? = null  // ← 新增参数
 ) {
     val coroutineScope = scope ?: rememberCoroutineScope()
 
@@ -225,7 +229,8 @@ fun Messages(
             Log.d("Messages", "显示预览边栏，卡片数量: ${previewCards.size}")
             PreviewSidebar(
                 previewCards = previewCards,
-                modifier = Modifier.align(Alignment.CenterEnd)
+                modifier = Modifier.align(Alignment.CenterEnd),
+                uiState = uiState  // ← 新增参数
             )
         } else {
             Log.d("Messages", "没有预览卡片，不显示边栏")
@@ -283,9 +288,7 @@ fun Message(
                     end = if (isUserMe) 16.dp else 16.dp,
                     start = if (isUserMe) 0.dp else 16.dp
                 )
-                .fillMaxWidth(
-                    fraction = if (isUserMe) 0.85f else 1.00f  // AI消息占屏幕宽度85%
-                )
+                .widthIn(max = if (isUserMe) 300.dp else 370.dp)  // ← 改成这1行
         )
     }
 }
@@ -1044,7 +1047,7 @@ fun RenderMarkdownText(
 }
 
 /**
- * 渲染Markdown表格 - 优化版
+ * 渲染Markdown表格 - 现代化 Excel 风格
  */
 @Composable
 fun RenderTable(
@@ -1053,15 +1056,10 @@ fun RenderTable(
     codeBlockBackground: Color
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = Color.White,
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier
-            .padding(vertical = 8.dp)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                shape = RoundedCornerShape(12.dp)
-            )
+        shadowElevation = 2.dp,
+        modifier = Modifier.padding(vertical = 8.dp)
     ) {
         Column {
             rows.forEachIndexed { rowIndex, cells ->
@@ -1072,77 +1070,85 @@ fun RenderTable(
 
                 val isHeader = rowIndex == 0
 
-                // 表头背景色
-                val rowBackground = if (isHeader) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                } else {
-                    Color.Transparent
+                // 实际数据行索引（去掉表头后）
+                val dataRowIndex = if (rowIndex > 1) rowIndex - 2 else 0
+
+                // 斑马纹背景：表头蓝色，奇数行白色，偶数行浅灰
+                val rowBackground = when {
+                    isHeader -> MaterialTheme.colorScheme.primary
+                    dataRowIndex % 2 == 0 -> Color.White
+                    else -> Color(0xFFF8F9FA)  // 浅灰色
                 }
 
-                Row(
-                    modifier = Modifier
-                        .background(rowBackground)
-                        .then(
-                            if (!isHeader && rowIndex > 1) {
-                                Modifier.border(
-                                    width = 0.5.dp,
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
-                                    shape = RoundedCornerShape(0.dp)
-                                )
-                            } else Modifier
-                        )
-                ) {
-                    cells.forEachIndexed { cellIndex, cell ->
-                        val processedCell = cell
-                            .replace(Regex("<br\\s*/?>"), "\n")
-                            .replace("&nbsp;", " ")
-                            .replace("&lt;", "<")
-                            .replace("&gt;", ">")
-                            .replace("&amp;", "&")
-                            .trim()
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .background(rowBackground)
+                            .fillMaxWidth()
+                    ) {
+                        cells.forEachIndexed { cellIndex, cell ->
+                            val processedCell = cell
+                                .replace(Regex("<br\\s*/?>"), "\n")
+                                .replace("&nbsp;", " ")
+                                .replace("&lt;", "<")
+                                .replace("&gt;", ">")
+                                .replace("&amp;", "&")
+                                .trim()
 
-                        // 固定列宽
-                        Box(
-                            modifier = Modifier
-                                .width(140.dp)  // 固定宽度
-                                .padding(12.dp)
-                                .then(
-                                    if (cellIndex < cells.size - 1) {
-                                        Modifier.border(
-                                            width = 0.5.dp,
-                                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                            shape = RoundedCornerShape(0.dp)
+                            // 单元格内容
+                            Box(
+                                modifier = Modifier
+                                    .width(140.dp)
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Text(
+                                    text = parseInlineMarkdown(
+                                        processedCell,
+                                        if (isHeader) Color.White else textColor,
+                                        codeBlockBackground
+                                    ),
+                                    style = if (isHeader) {
+                                        MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold
                                         )
-                                    } else Modifier
+                                    } else {
+                                        MaterialTheme.typography.bodyMedium
+                                    },
+                                    color = if (isHeader) Color.White else textColor,
+                                    maxLines = Int.MAX_VALUE,
+                                    softWrap = true
                                 )
-                        ) {
-                            Text(
-                                text = parseInlineMarkdown(processedCell, textColor, codeBlockBackground),
-                                style = if (isHeader) {
-                                    MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                } else {
-                                    MaterialTheme.typography.bodyMedium
-                                },
-                                color = if (isHeader) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    textColor
-                                },
-                                maxLines = Int.MAX_VALUE,  // 允许换行
-                                softWrap = true  // 自动换行
-                            )
+                            }
+
+                            // 列分割线（Excel 风格）
+                            if (cellIndex < cells.size - 1) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .height(48.dp)
+                                        .background(
+                                            if (isHeader) {
+                                                Color.White.copy(alpha = 0.3f)
+                                            } else {
+                                                Color(0xFFE0E0E0)
+                                            }
+                                        )
+                                )
+                            }
                         }
                     }
-                }
 
-                // 表头下方添加分隔线
-                if (isHeader) {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                        thickness = 2.dp
-                    )
+                    // 行分割线（不在最后一行后添加）
+                    if (rowIndex < rows.size - 1) {
+                        HorizontalDivider(
+                            color = if (isHeader) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                            } else {
+                                Color(0xFFE0E0E0)
+                            },
+                            thickness = if (isHeader) 2.dp else 1.dp
+                        )
+                    }
                 }
             }
         }
@@ -1305,7 +1311,7 @@ fun CodePreviewCard(
 }
 
 /**
- * 代码弹窗 - 全屏显示长代码
+ * 代码弹窗 - 全屏显示长代码（现代化悬浮样式）
  */
 @Composable
 fun CodeDialog(
@@ -1324,54 +1330,14 @@ fun CodeDialog(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surfaceContainerLow
+            color = Color(0xFFF8F9FA)  // 浅灰背景，与表格统一
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // 顶部工具栏
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "代码详情",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = language,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Row {
-                        IconButton(onClick = {
-                            shareCodeAsFile(context, code, language)
-                        }) {
-                            Icon(
-                                painter = painterResource(id = android.R.drawable.ic_menu_share),
-                                contentDescription = "分享"
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(
-                                painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
-                                contentDescription = "关闭"
-                            )
-                        }
-                    }
-                }
-
-                HorizontalDivider()
-
+            Box(modifier = Modifier.fillMaxSize()) {
                 // 代码内容（可滚动）
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp)
+                        .padding(top = 60.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
                 ) {
                     item {
                         CodeBlockWithCopyButton(
@@ -1383,13 +1349,52 @@ fun CodeDialog(
                         )
                     }
                 }
+
+                // 顶部悬浮工具栏 - 紧凑设计（与表格统一）
+                Surface(
+                    color = Color.White.copy(alpha = 0.95f),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 分享按钮
+                        IconButton(onClick = {
+                            shareCodeAsFile(context, code, language)
+                        }) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_share),
+                                contentDescription = "分享",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // 关闭按钮
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
+                                contentDescription = "关闭",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 /**
- * 表格弹窗 - 全屏显示
+ * 表格弹窗 - 全屏显示（现代化悬浮样式）
  */
 @Composable
 fun TableDialog(
@@ -1408,47 +1413,14 @@ fun TableDialog(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surfaceContainerLow
+            color = Color(0xFFF8F9FA)  // 浅灰背景，更现代
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // 顶部工具栏
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "表格详情",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Row {
-                        IconButton(onClick = {
-                            shareTableAsFile(context, tableRows)
-                        }) {
-                            Icon(
-                                painter = painterResource(id = android.R.drawable.ic_menu_share),
-                                contentDescription = "分享"
-                            )
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(
-                                painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
-                                contentDescription = "关闭"
-                            )
-                        }
-                    }
-                }
-
-                HorizontalDivider()
-
+            Box(modifier = Modifier.fillMaxSize()) {
                 // 表格内容（可横向和纵向滚动）
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp)
+                        .padding(top = 60.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
                 ) {
                     item {
                         Row(
@@ -1458,11 +1430,49 @@ fun TableDialog(
                         }
                     }
                 }
+
+                // 顶部悬浮工具栏 - 紧凑设计
+                Surface(
+                    color = Color.White.copy(alpha = 0.95f),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 分享按钮
+                        IconButton(onClick = {
+                            shareTableAsFile(context, tableRows)
+                        }) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_share),
+                                contentDescription = "分享",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // 关闭按钮
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
+                                contentDescription = "关闭",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
-
 /**
  * 分享表格为 CSV 文件
  */
@@ -1977,7 +1987,8 @@ enum class PreviewCardType {
 @Composable
 fun PreviewSidebar(
     previewCards: List<PreviewCard>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    uiState: ConversationUiState? = null  // ← 新增参数
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var selectedCard by remember { mutableStateOf<PreviewCard?>(null) }
@@ -2040,7 +2051,8 @@ fun PreviewSidebar(
                                 onClick = {
                                     selectedCard = previewCards[index]
                                     Log.d("PreviewSidebar", "点击卡片: ${previewCards[index].title}")
-                                }
+                                },
+                                uiState = uiState  // ← 新增参数
                             )
                         }
                     }
@@ -2109,13 +2121,94 @@ fun PreviewSidebar(
 }
 
 /**
- * 单个预览卡片项
+ * 单个预览卡片项 - 支持AI生成标题
  */
 @Composable
 fun PreviewCardItem(
     card: PreviewCard,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    uiState: ConversationUiState? = null
 ) {
+    // 卡片显示的标题状态（独立状态，每个卡片互不干扰）
+    var displayTitle by remember { mutableStateOf(card.title) }
+
+    // ========== 标题生成逻辑 ==========
+    LaunchedEffect(card.id) {
+        val useCase = uiState?.generateChatNameUseCase
+        val provider = uiState?.activeProviderSetting
+        val model = uiState?.activeModel
+
+        // 只有在所有必要组件都存在时才生成标题
+        if (useCase != null && provider != null && model != null) {
+            try {
+                // 设置初始状态
+                displayTitle = "生成中..."
+
+                // 根据卡片类型提取内容
+                val content = when (card.type) {
+                    PreviewCardType.TABLE -> {
+                        val rows = card.data as List<List<String>>
+                        // 提取前3行作为示例
+                        val sample = rows.take(3).joinToString("\n") { row ->
+                            row.joinToString(" | ")
+                        }
+                        "请为以下表格生成一个简洁的标题（不超过10个字）：\n$sample"
+                    }
+                    PreviewCardType.CODE -> {
+                        val code = card.data as String
+                        val language = card.language ?: "text"
+                        // 提取前10行
+                        val sample = code.lines().take(10).joinToString("\n")
+                        "请为以下${language}代码生成一个简洁的标题（不超过10个字）：\n$sample"
+                    }
+                }
+
+                Log.d("PreviewCardItem", "开始生成标题，卡片ID: ${card.id}, 类型: ${card.type}")
+
+                // 调用 UseCase 生成标题（完全复用会话标题逻辑）
+                val titleFlow = useCase(
+                    userMessage = content,
+                    providerSetting = provider,
+                    model = model,
+                    temperature = 0.3f,  // 较低温度，获得稳定标题
+                    maxTokens = 30       // 标题不需要太长
+                )
+
+                var generatedTitle = StringBuilder()
+                titleFlow
+                    .onCompletion {
+                        val finalTitle = generatedTitle.toString().trim()
+                        if (finalTitle.isNotBlank()) {
+                            // 限制标题长度为10个字
+                            displayTitle = finalTitle.take(10).trim()
+                            Log.d("PreviewCardItem", "标题生成完成: $displayTitle")
+                        } else {
+                            // 生成失败，回退到默认标题
+                            displayTitle = card.title
+                            Log.d("PreviewCardItem", "标题生成为空，使用默认: ${card.title}")
+                        }
+                    }
+                    .collect { chunk ->
+                        // 实时更新标题显示
+                        generatedTitle.append(chunk)
+                        val currentTitle = generatedTitle.toString().take(10).trim()
+                        if (currentTitle.isNotBlank()) {
+                            displayTitle = currentTitle
+                        }
+                    }
+            } catch (e: Exception) {
+                // 生成失败，回退到默认标题
+                displayTitle = card.title
+                Log.e("PreviewCardItem", "标题生成失败: ${e.message}", e)
+            }
+        } else {
+            // 没有 UseCase 或 Provider/Model，使用默认标题
+            displayTitle = card.title
+            Log.d("PreviewCardItem", "缺少生成条件，使用默认标题: ${card.title}")
+        }
+    }
+
+    // ========== UI 显示 ==========
     Surface(
         color = Color.White,
         modifier = Modifier
@@ -2145,9 +2238,9 @@ fun PreviewCardItem(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // 标题
+            // 显示动态生成的标题
             Text(
-                text = card.title,
+                text = displayTitle,  // ← 使用动态标题
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 9.sp,
                 maxLines = 1,
@@ -2165,7 +2258,6 @@ fun PreviewCardItem(
         }
     }
 }
-
 /**
  * 从消息列表中提取预览卡片
  */

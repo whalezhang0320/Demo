@@ -59,6 +59,7 @@ spotless = "8.0.0"
 # @keep
 targetSdk = "33"
 version-catalog-update = "1.0.1"
+runtime = "1.10.0"
 junitVersion = "4.12"
 
 [libraries]
@@ -163,6 +164,7 @@ roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose"
 roborazzi-rule = { module = "io.github.takahirom.roborazzi:roborazzi-junit-rule", version.ref = "roborazzi" }
 rometools-modules = { module = "com.rometools:rome-modules", version.ref = "rome" }
 rometools-rome = { module = "com.rometools:rome", version.ref = "rome" }
+androidx-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "runtime" }
 junit-junit = { group = "junit", name = "junit", version.ref = "junitVersion" }
 
 [plugins]

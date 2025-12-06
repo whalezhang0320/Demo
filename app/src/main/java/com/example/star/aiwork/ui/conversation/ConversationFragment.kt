@@ -288,6 +288,7 @@ class ConversationFragment : Fragment() {
                         onSearchQueryChanged = { query -> chatViewModel.searchSessions(query) },
                         searchResults = searchResults,
                         onSessionSelected = { session -> chatViewModel.selectSession(session) },
+                        generateChatNameUseCase = generateChatNameUseCase  // ← 新增这一行
                         onLoadMoreMessages = { chatViewModel.loadMoreMessages() }
                     )
                 }

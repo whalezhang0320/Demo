@@ -27,6 +27,9 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.text.input.TextFieldValue
 import com.example.star.aiwork.R
 import com.example.star.aiwork.domain.model.Agent
+import com.example.star.aiwork.domain.model.Model
+import com.example.star.aiwork.domain.model.ProviderSetting
+import com.example.star.aiwork.domain.usecase.GenerateChatNameUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -105,6 +108,21 @@ class ConversationUiState(
 
     // 暂存选中的图片 URI
     var selectedImageUri: Uri? by mutableStateOf(null)
+
+    /**
+     * 用于生成预览卡片标题的UseCase
+     */
+    var generateChatNameUseCase: GenerateChatNameUseCase? = null
+
+    /**
+     * 当前活跃的Provider设置
+     */
+    var activeProviderSetting: ProviderSetting? = null
+
+    /**
+     * 当前活跃的Model
+     */
+    var activeModel: Model? = null
 
     /**
      * 添加一条新消息到列表顶部。
