@@ -92,6 +92,11 @@ import androidx.compose.ui.unit.sp
 import com.example.star.aiwork.domain.model.Model
 import com.example.star.aiwork.domain.model.ProviderSetting
 import kotlinx.coroutines.CoroutineScope
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
+import android.util.Log
 
 const val ConversationTestTag = "ConversationTestTag"
 
@@ -113,20 +118,27 @@ fun Messages(
     isGenerating: Boolean = false
 ) {
     val coroutineScope = scope ?: rememberCoroutineScope()
-    Box(modifier = modifier) {
 
+    // 提取预览卡片
+    val previewCards = remember(messages.size, messages.lastOrNull()?.content) {
+        val cards = extractPreviewCardsFromMessages(messages)
+        Log.d("Messages", "提取到 ${cards.size} 个预览卡片")
+        cards
+    }
+
+    Box(modifier = modifier) {
         val authorMe = stringResource(id = R.string.author_me)
-        
+
         // 找到最后一条助手消息（在 reverseLayout 中，第一条消息是最后一条）
-        val lastAssistantMessageIndex = messages.indexOfFirst { 
-            it.author != authorMe && it.author != "System" 
+        val lastAssistantMessageIndex = messages.indexOfFirst {
+            it.author != authorMe && it.author != "System"
         }
-        val showRegenerateButton = lastAssistantMessageIndex >= 0 && 
-                                   logic != null && 
-                                   providerSetting != null && 
-                                   model != null &&
-                                   !messages[lastAssistantMessageIndex].isLoading
-        
+        val showRegenerateButton = lastAssistantMessageIndex >= 0 &&
+                logic != null &&
+                providerSetting != null &&
+                model != null &&
+                !messages[lastAssistantMessageIndex].isLoading
+
         LazyColumn(
             reverseLayout = true,
             state = scrollState,
@@ -207,6 +219,17 @@ fun Messages(
             },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+
+        // 右侧预览边栏
+        if (previewCards.isNotEmpty()) {
+            Log.d("Messages", "显示预览边栏，卡片数量: ${previewCards.size}")
+            PreviewSidebar(
+                previewCards = previewCards,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
+        } else {
+            Log.d("Messages", "没有预览卡片，不显示边栏")
+        }
     }
 }
 
@@ -460,7 +483,7 @@ private fun RowScope.DayHeaderLine() {
 }
 
 /**
- * 消息气泡 - 支持Markdown渲染、智能复制、加载动画
+ * 消息气泡 - 现代化设计，支持Markdown渲染、智能复制、加载动画
  */
 @Composable
 fun ChatItemBubble(
@@ -470,16 +493,33 @@ fun ChatItemBubble(
 ) {
     val isSystemMessage = message.author == "System"
 
+    // 现代化配色方案
     val backgroundBubbleColor = when {
-        isSystemMessage -> MaterialTheme.colorScheme.errorContainer // 淡红色背景
-        isUserMe -> MaterialTheme.colorScheme.primaryContainer // 淡蓝色背景
-        else -> MaterialTheme.colorScheme.surfaceContainer // 淡灰色背景
+        isSystemMessage -> MaterialTheme.colorScheme.errorContainer
+        isUserMe -> MaterialTheme.colorScheme.primary  // 深蓝色
+        else -> Color(0xFFF5F5F5)  // 浅灰白色
     }
+
+    // 边框颜色（柔和半透明）
+    val borderColor = when {
+        isSystemMessage -> MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
+        isUserMe -> Color.White.copy(alpha = 0.2f)
+        else -> Color.Black.copy(alpha = 0.06f)  // 浅灰边框
+    }
+
+    // 阴影高度
+    val shadowElevation = if (isSystemMessage) 1.dp else 3.dp
 
     Column {
         Surface(
             color = backgroundBubbleColor,
             shape = ChatBubbleShape,
+            shadowElevation = shadowElevation,
+            modifier = Modifier.border(
+                width = 1.dp,
+                color = borderColor,
+                shape = ChatBubbleShape
+            )
         ) {
             Column {
                 // 消息内容
@@ -495,7 +535,6 @@ fun ChatItemBubble(
                         authorClicked = authorClicked
                     )
                 }
-
             }
         }
 
@@ -505,6 +544,12 @@ fun ChatItemBubble(
             Surface(
                 color = backgroundBubbleColor,
                 shape = ChatBubbleShape,
+                shadowElevation = shadowElevation,
+                modifier = Modifier.border(
+                    width = 1.dp,
+                    color = borderColor,
+                    shape = ChatBubbleShape
+                )
             ) {
                 AsyncImage(
                     model = message.imageUrl,
@@ -518,6 +563,12 @@ fun ChatItemBubble(
             Surface(
                 color = backgroundBubbleColor,
                 shape = ChatBubbleShape,
+                shadowElevation = shadowElevation,
+                modifier = Modifier.border(
+                    width = 1.dp,
+                    color = borderColor,
+                    shape = ChatBubbleShape
+                )
             ) {
                 Image(
                     painter = painterResource(message.image),
@@ -551,9 +602,9 @@ fun MarkdownMessage(
     }
 
     val codeBlockBackground = if (isUserMe) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
     } else {
-        MaterialTheme.colorScheme.surfaceContainer
+        MaterialTheme.colorScheme.surfaceVariant  // 改这里：用更深的颜色
     }
 
     val codeTextColor = if (isUserMe) {
@@ -608,7 +659,7 @@ fun MarkdownMessage(
 }
 
 /**
- * 代码块组件 - 带复制按钮
+ * 代码块组件 - 带行号、语法高亮和复制按钮（完美对齐）
  */
 @Composable
 fun CodeBlockWithCopyButton(
@@ -618,13 +669,23 @@ fun CodeBlockWithCopyButton(
     backgroundColor: Color,
     textColor: Color
 ) {
+    // 固定使用 VS Code Dark+ 配色
+    val codeBackground = Color(0xFF1E1E1E)
+    val topBarBackground = Color(0xFF2D2D2D)
+    val lineNumberBackground = Color(0xFF252526)
+    val lineNumberColor = Color(0xFF858585)
+
+    val lines = code.split("\n")
+    val highlightedCode = highlightCode(code, language.lowercase())
+    val codeLines = getHighlightedLines(highlightedCode, lines.size)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
     ) {
         Surface(
-            color = backgroundColor,
+            color = codeBackground,
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -633,14 +694,15 @@ fun CodeBlockWithCopyButton(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .background(topBarBackground)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = language,
+                        text = language.lowercase(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = textColor.copy(alpha = 0.7f),
+                        color = Color(0xFF858585),
                         modifier = Modifier.padding(end = 8.dp)
                     )
 
@@ -651,31 +713,98 @@ fun CodeBlockWithCopyButton(
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
                             contentDescription = "复制代码",
-                            tint = textColor.copy(alpha = 0.7f),
+                            tint = Color(0xFF858585),
                             modifier = Modifier.size(14.dp)
                         )
                     }
                 }
 
-                HorizontalDivider(
-                    color = textColor.copy(alpha = 0.1f),
-                    thickness = 1.dp
-                )
-
-                // 代码内容
-                Text(
-                    text = code,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
-                        color = textColor
-                    ),
+                // 代码内容区域（支持横向滚动）
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp)
-                )
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    ) {
+                        // 每一行都是一个 Row，包含行号和代码
+                        codeLines.forEachIndexed { index, lineText ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                // 行号 - 去掉灰色背景，左对齐
+                                Text(
+                                    text = "${index + 1}",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        lineHeight = 20.sp,
+                                        fontSize = 14.sp
+                                    ),
+                                    color = lineNumberColor,
+                                    modifier = Modifier
+                                        .padding(start = 12.dp, end = 16.dp)
+                                        .widthIn(min = 32.dp),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                )
+
+                                // 代码内容
+                                Text(
+                                    text = lineText,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        lineHeight = 20.sp,
+                                        fontSize = 14.sp
+                                    ),
+                                    modifier = Modifier.padding(end = 12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+}
+
+/**
+ * 将高亮后的代码按行分割
+ */
+private fun getHighlightedLines(annotatedString: AnnotatedString, lineCount: Int): List<AnnotatedString> {
+    val lines = mutableListOf<AnnotatedString>()
+    var currentStart = 0
+
+    // 找到所有换行符的位置
+    val text = annotatedString.text
+    var lineIndex = 0
+
+    while (lineIndex < lineCount) {
+        val nextNewline = text.indexOf('\n', currentStart)
+
+        if (nextNewline != -1) {
+            // 提取这一行（不包含换行符）
+            lines.add(annotatedString.subSequence(currentStart, nextNewline))
+            currentStart = nextNewline + 1
+        } else {
+            // 最后一行
+            if (currentStart < text.length) {
+                lines.add(annotatedString.subSequence(currentStart, text.length))
+            } else {
+                // 空行
+                lines.add(AnnotatedString(""))
+            }
+            break
+        }
+        lineIndex++
+    }
+
+    // 如果还有剩余行（空行）
+    while (lines.size < lineCount) {
+        lines.add(AnnotatedString(""))
+    }
+
+    return lines
 }
 
 /**
@@ -727,15 +856,28 @@ fun SimpleMarkdownRenderer(
 
                 val language = match.groupValues[1].takeIf { it.isNotEmpty() } ?: "text"
                 val code = match.groupValues[2].trim()
+                val lineCount = code.split("\n").size
 
                 Spacer(modifier = Modifier.height(8.dp))
-                CodeBlockWithCopyButton(
-                    code = code,
-                    language = language,
-                    onCopy = { onCodeBlockCopy(code) },
-                    backgroundColor = codeBlockBackground,
-                    textColor = codeTextColor
-                )
+
+                // 超过50行的代码封装成预览卡片
+                if (lineCount > 50) {
+                    CodePreviewCard(
+                        code = code,
+                        language = language,
+                        lineCount = lineCount,
+                        onCodeBlockCopy = onCodeBlockCopy
+                    )
+                } else {
+                    CodeBlockWithCopyButton(
+                        code = code,
+                        language = language,
+                        onCopy = { onCodeBlockCopy(code) },
+                        backgroundColor = codeBlockBackground,
+                        textColor = codeTextColor
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 lastIndex = match.range.last + 1
@@ -777,9 +919,13 @@ fun RenderMarkdownText(
                 i++
                 continue
             } else if (inTable) {
-                // 表格结束，渲染表格
+                // 表格结束，渲染表格卡片
                 if (tableRows.size >= 2) {
-                    RenderTable(tableRows, textColor, codeBlockBackground)
+                    TableCard(
+                        tableRows = tableRows,
+                        textColor = textColor,
+                        codeBlockBackground = codeBlockBackground
+                    )
                 }
                 inTable = false
                 tableRows.clear()
@@ -904,13 +1050,17 @@ fun RenderMarkdownText(
 
         // 如果最后还有未渲染的表格
         if (inTable && tableRows.size >= 2) {
-            RenderTable(tableRows, textColor, codeBlockBackground)
+            TableCard(
+                tableRows = tableRows,
+                textColor = textColor,
+                codeBlockBackground = codeBlockBackground
+            )
         }
     }
 }
 
 /**
- * 渲染Markdown表格
+ * 渲染Markdown表格 - 优化版
  */
 @Composable
 fun RenderTable(
@@ -919,41 +1069,551 @@ fun RenderTable(
     codeBlockBackground: Color
 ) {
     Surface(
-        color = codeBlockBackground.copy(alpha = 0.2f),
-        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(12.dp),
         modifier = Modifier
-            .fillMaxWidth()
             .padding(vertical = 8.dp)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            )
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
+        Column {
             rows.forEachIndexed { rowIndex, cells ->
                 // 跳过分隔行（第二行通常是 |---|---|）
                 if (rowIndex == 1 && cells.all { it.matches(Regex("^:?-+:?$")) }) {
-                    HorizontalDivider(color = textColor.copy(alpha = 0.3f))
                     return@forEachIndexed
                 }
 
+                val isHeader = rowIndex == 0
+
+                // 表头背景色
+                val rowBackground = if (isHeader) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                } else {
+                    Color.Transparent
+                }
+
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    modifier = Modifier
+                        .background(rowBackground)
+                        .then(
+                            if (!isHeader && rowIndex > 1) {
+                                Modifier.border(
+                                    width = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(0.dp)
+                                )
+                            } else Modifier
+                        )
                 ) {
-                    cells.forEach { cell ->
-                        Text(
-                            text = parseInlineMarkdown(cell, textColor, codeBlockBackground),
-                            style = if (rowIndex == 0) {
-                                MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-                            } else {
-                                MaterialTheme.typography.bodyMedium
-                            },
+                    cells.forEachIndexed { cellIndex, cell ->
+                        val processedCell = cell
+                            .replace(Regex("<br\\s*/?>"), "\n")
+                            .replace("&nbsp;", " ")
+                            .replace("&lt;", "<")
+                            .replace("&gt;", ">")
+                            .replace("&amp;", "&")
+                            .trim()
+
+                        // 固定列宽
+                        Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(4.dp)
+                                .width(140.dp)  // 固定宽度
+                                .padding(12.dp)
+                                .then(
+                                    if (cellIndex < cells.size - 1) {
+                                        Modifier.border(
+                                            width = 0.5.dp,
+                                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                            shape = RoundedCornerShape(0.dp)
+                                        )
+                                    } else Modifier
+                                )
+                        ) {
+                            Text(
+                                text = parseInlineMarkdown(processedCell, textColor, codeBlockBackground),
+                                style = if (isHeader) {
+                                    MaterialTheme.typography.titleSmall.copy(
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                } else {
+                                    MaterialTheme.typography.bodyMedium
+                                },
+                                color = if (isHeader) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    textColor
+                                },
+                                maxLines = Int.MAX_VALUE,  // 允许换行
+                                softWrap = true  // 自动换行
+                            )
+                        }
+                    }
+                }
+
+                // 表头下方添加分隔线
+                if (isHeader) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                        thickness = 2.dp
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 表格卡片 - 简洁白色风格
+ */
+@Composable
+fun TableCard(
+    tableRows: List<List<String>>,
+    textColor: Color,
+    codeBlockBackground: Color
+) {
+    val cachedTableRows = remember(tableRows) { tableRows.toList() }
+    var showDialog by remember { mutableStateOf(false) }
+
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .clickable { showDialog = true },
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                // 直接显示图标，无背景
+                Text(
+                    text = "📊",
+                    fontSize = 28.sp
+                )
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column {
+                    Text(
+                        text = "点击查看表格",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = Color.Black.copy(alpha = 0.87f)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${cachedTableRows.size} 行 × ${cachedTableRows.firstOrNull()?.size ?: 0} 列",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Black.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            // 右侧眼睛图标 - 蓝色
+            Icon(
+                painter = painterResource(id = android.R.drawable.ic_menu_view),
+                contentDescription = "查看表格",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+
+    if (showDialog) {
+        TableDialog(
+            tableRows = cachedTableRows,
+            textColor = textColor,
+            codeBlockBackground = codeBlockBackground,
+            onDismiss = { showDialog = false }
+        )
+    }
+}
+
+/**
+ * 代码预览卡片 - 用于长代码（超过50行）
+ */
+@Composable
+fun CodePreviewCard(
+    code: String,
+    language: String,
+    lineCount: Int,
+    onCodeBlockCopy: (String) -> Unit
+) {
+    val cachedCode = remember(code) { code }
+    var showDialog by remember { mutableStateOf(false) }
+
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .clickable { showDialog = true },
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                // 代码图标
+                Text(
+                    text = "💻",
+                    fontSize = 28.sp
+                )
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column {
+                    Text(
+                        text = "点击查看代码",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = Color.Black.copy(alpha = 0.87f)
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "$language · $lineCount 行",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Black.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            // 右侧查看图标
+            Icon(
+                painter = painterResource(id = android.R.drawable.ic_menu_view),
+                contentDescription = "查看代码",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+
+    if (showDialog) {
+        CodeDialog(
+            code = cachedCode,
+            language = language,
+            onDismiss = { showDialog = false },
+            onCodeBlockCopy = onCodeBlockCopy
+        )
+    }
+}
+
+/**
+ * 代码弹窗 - 全屏显示长代码
+ */
+@Composable
+fun CodeDialog(
+    code: String,
+    language: String,
+    onDismiss: () -> Unit,
+    onCodeBlockCopy: (String) -> Unit
+) {
+    val context = LocalContext.current
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // 顶部工具栏
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "代码详情",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = language,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row {
+                        IconButton(onClick = {
+                            shareCodeAsFile(context, code, language)
+                        }) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_share),
+                                contentDescription = "分享"
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
+                                contentDescription = "关闭"
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+
+                // 代码内容（可滚动）
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                ) {
+                    item {
+                        CodeBlockWithCopyButton(
+                            code = code,
+                            language = language,
+                            onCopy = { onCodeBlockCopy(code) },
+                            backgroundColor = Color(0xFF1E1E1E),
+                            textColor = Color(0xFFD4D4D4)
                         )
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * 表格弹窗 - 全屏显示
+ */
+@Composable
+fun TableDialog(
+    tableRows: List<List<String>>,
+    textColor: Color,
+    codeBlockBackground: Color,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // 顶部工具栏
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "表格详情",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row {
+                        IconButton(onClick = {
+                            shareTableAsFile(context, tableRows)
+                        }) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_share),
+                                contentDescription = "分享"
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
+                                contentDescription = "关闭"
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider()
+
+                // 表格内容（可横向和纵向滚动）
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
+                ) {
+                    item {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState())
+                        ) {
+                            RenderTable(tableRows, textColor, codeBlockBackground)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 分享表格为 CSV 文件
+ */
+private fun shareTableAsFile(context: android.content.Context, tableRows: List<List<String>>) {
+    try {
+        // 生成 CSV 内容
+        val csvContent = convertTableToCSV(tableRows)
+
+        // 创建缓存目录
+        val cacheDir = java.io.File(context.cacheDir, "shared")
+        if (!cacheDir.exists()) {
+            cacheDir.mkdirs()
+        }
+
+        // 创建 CSV 文件
+        val fileName = "table_${System.currentTimeMillis()}.csv"
+        val file = java.io.File(cacheDir, fileName)
+        file.writeText(csvContent, Charsets.UTF_8)
+
+        // 获取文件 URI
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+
+        // 创建分享 Intent
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        val chooserIntent = android.content.Intent.createChooser(intent, "分享表格")
+        context.startActivity(chooserIntent)
+
+    } catch (e: Exception) {
+        Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 分享代码为文件
+ */
+private fun shareCodeAsFile(
+    context: android.content.Context,
+    code: String,
+    language: String
+) {
+    try {
+        // 根据语言确定文件扩展名
+        val extension = when (language.lowercase()) {
+            "java" -> "java"
+            "kotlin", "kt" -> "kt"
+            "python", "py" -> "py"
+            "javascript", "js" -> "js"
+            "typescript", "ts" -> "ts"
+            "html" -> "html"
+            "css" -> "css"
+            "c" -> "c"
+            "cpp", "c++" -> "cpp"
+            "swift" -> "swift"
+            "go" -> "go"
+            "rust", "rs" -> "rs"
+            else -> "txt"
+        }
+
+        // 创建缓存目录
+        val cacheDir = java.io.File(context.cacheDir, "shared")
+        if (!cacheDir.exists()) {
+            cacheDir.mkdirs()
+        }
+
+        // 创建代码文件
+        val fileName = "code_${System.currentTimeMillis()}.$extension"
+        val file = java.io.File(cacheDir, fileName)
+        file.writeText(code, Charsets.UTF_8)
+
+        // 获取文件 URI
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+
+        // 创建分享 Intent
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        val chooserIntent = android.content.Intent.createChooser(intent, "分享代码")
+        context.startActivity(chooserIntent)
+
+    } catch (e: Exception) {
+        Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 将表格转换为 CSV 格式
+ */
+private fun convertTableToCSV(tableRows: List<List<String>>): String {
+    val stringBuilder = StringBuilder()
+
+    tableRows.forEachIndexed { rowIndex, cells ->
+        // 跳过 Markdown 分隔行
+        if (rowIndex == 1 && cells.all { it.matches(Regex("^:?-+:?$")) }) {
+            return@forEachIndexed
+        }
+
+        // 处理每个单元格
+        val processedCells = cells.map { cell ->
+            val cleanCell = cell
+                .replace(Regex("<br\\s*/?>"), " ")
+                .replace("&nbsp;", " ")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .trim()
+
+            // CSV 转义规则：包含逗号、引号或换行的字段用引号括起来
+            if (cleanCell.contains(",") || cleanCell.contains("\"") || cleanCell.contains("\n")) {
+                "\"${cleanCell.replace("\"", "\"\"")}\""
+            } else {
+                cleanCell
+            }
+        }
+
+        stringBuilder.append(processedCells.joinToString(","))
+        stringBuilder.append("\n")
+    }
+
+    return stringBuilder.toString()
 }
 
 /**
@@ -1127,10 +1787,474 @@ fun isPureTextContent(content: String): Boolean {
     return true
 }
 
+/**
+ * 代码语法高亮 - VS Code Dark+ 配色
+ */
+fun highlightCode(code: String, language: String): AnnotatedString {
+    return buildAnnotatedString {
+        when (language) {
+            "java", "kotlin" -> highlightJavaKotlin(code)
+            "python", "py" -> highlightPython(code)
+            "javascript", "js", "typescript", "ts" -> highlightJavaScript(code)
+            else -> {
+                withStyle(SpanStyle(color = Color(0xFFD4D4D4))) {
+                    append(code)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Java/Kotlin 语法高亮
+ */
+private fun AnnotatedString.Builder.highlightJavaKotlin(code: String) {
+    val keywords = setOf(
+        "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
+        "class", "const", "continue", "default", "do", "double", "else", "enum",
+        "extends", "final", "finally", "float", "for", "goto", "if", "implements",
+        "import", "instanceof", "int", "interface", "long", "native", "new", "package",
+        "private", "protected", "public", "return", "short", "static", "strictfp",
+        "super", "switch", "synchronized", "this", "throw", "throws", "transient",
+        "try", "void", "volatile", "while", "true", "false", "null",
+        // Kotlin 关键字
+        "fun", "val", "var", "when", "is", "in", "object", "companion", "data",
+        "sealed", "open", "internal", "inline", "suspend", "lateinit", "by"
+    )
+
+    val lines = code.split("\n")
+    lines.forEachIndexed { index, line ->
+        var currentIndex = 0
+
+        // 注释检测
+        val commentIndex = line.indexOf("//")
+        if (commentIndex >= 0) {
+            // 处理注释前的内容
+            if (commentIndex > 0) {
+                highlightLine(line.substring(0, commentIndex), keywords)
+            }
+            // 注释部分
+            withStyle(SpanStyle(color = Color(0xFF6A9955))) {
+                append(line.substring(commentIndex))
+            }
+        } else {
+            highlightLine(line, keywords)
+        }
+
+        if (index < lines.size - 1) append("\n")
+    }
+}
+
+/**
+ * Python 语法高亮
+ */
+private fun AnnotatedString.Builder.highlightPython(code: String) {
+    val keywords = setOf(
+        "False", "None", "True", "and", "as", "assert", "async", "await",
+        "break", "class", "continue", "def", "del", "elif", "else", "except",
+        "finally", "for", "from", "global", "if", "import", "in", "is",
+        "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
+        "try", "while", "with", "yield", "self", "print"
+    )
+
+    val lines = code.split("\n")
+    lines.forEachIndexed { index, line ->
+        // 注释检测
+        val commentIndex = line.indexOf("#")
+        if (commentIndex >= 0) {
+            if (commentIndex > 0) {
+                highlightLine(line.substring(0, commentIndex), keywords)
+            }
+            withStyle(SpanStyle(color = Color(0xFF6A9955))) {
+                append(line.substring(commentIndex))
+            }
+        } else {
+            highlightLine(line, keywords)
+        }
+
+        if (index < lines.size - 1) append("\n")
+    }
+}
+
+/**
+ * JavaScript/TypeScript 语法高亮
+ */
+private fun AnnotatedString.Builder.highlightJavaScript(code: String) {
+    val keywords = setOf(
+        "abstract", "arguments", "await", "boolean", "break", "byte", "case",
+        "catch", "char", "class", "const", "continue", "debugger", "default",
+        "delete", "do", "double", "else", "enum", "eval", "export", "extends",
+        "false", "final", "finally", "float", "for", "function", "goto", "if",
+        "implements", "import", "in", "instanceof", "int", "interface", "let",
+        "long", "native", "new", "null", "package", "private", "protected",
+        "public", "return", "short", "static", "super", "switch", "synchronized",
+        "this", "throw", "throws", "transient", "true", "try", "typeof", "var",
+        "void", "volatile", "while", "with", "yield", "async"
+    )
+
+    val lines = code.split("\n")
+    lines.forEachIndexed { index, line ->
+        val commentIndex = line.indexOf("//")
+        if (commentIndex >= 0) {
+            if (commentIndex > 0) {
+                highlightLine(line.substring(0, commentIndex), keywords)
+            }
+            withStyle(SpanStyle(color = Color(0xFF6A9955))) {
+                append(line.substring(commentIndex))
+            }
+        } else {
+            highlightLine(line, keywords)
+        }
+
+        if (index < lines.size - 1) append("\n")
+    }
+}
+
+/**
+ * 高亮单行代码
+ */
+private fun AnnotatedString.Builder.highlightLine(line: String, keywords: Set<String>) {
+    val stringRegex = Regex("\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'")
+    val numberRegex = Regex("\\b\\d+(\\.\\d+)?\\b")
+    val wordRegex = Regex("\\b\\w+\\b")
+
+    var currentIndex = 0
+    val matches = mutableListOf<Triple<IntRange, String, String>>()
+
+    // 收集所有匹配
+    stringRegex.findAll(line).forEach { match ->
+        matches.add(Triple(match.range, "string", match.value))
+    }
+    numberRegex.findAll(line).forEach { match ->
+        matches.add(Triple(match.range, "number", match.value))
+    }
+    wordRegex.findAll(line).forEach { match ->
+        if (match.value in keywords) {
+            matches.add(Triple(match.range, "keyword", match.value))
+        }
+    }
+
+    // 按位置排序并渲染
+    matches.sortedBy { it.first.first }.forEach { (range, type, value) ->
+        // 添加前面的普通文本
+        if (currentIndex < range.first) {
+            withStyle(SpanStyle(color = Color(0xFFD4D4D4))) {
+                append(line.substring(currentIndex, range.first))
+            }
+        }
+
+        // 添加高亮文本
+        val color = when (type) {
+            "keyword" -> Color(0xFF569CD6)  // 蓝色
+            "string" -> Color(0xFFCE9178)   // 橙色
+            "number" -> Color(0xFFB5CEA8)   // 浅绿
+            else -> Color(0xFFD4D4D4)
+        }
+        withStyle(SpanStyle(color = color)) {
+            append(value)
+        }
+
+        currentIndex = range.last + 1
+    }
+
+    // 添加剩余文本
+    if (currentIndex < line.length) {
+        withStyle(SpanStyle(color = Color(0xFFD4D4D4))) {
+            append(line.substring(currentIndex))
+        }
+    }
+}
+
 @Preview
 @Composable
 fun DayHeaderPrev() {
     DayHeader("Aug 6")
 }
 
+/**
+ * 预览卡片数据类
+ */
+data class PreviewCard(
+    val id: String,
+    val type: PreviewCardType,
+    val title: String,
+    val data: Any,
+    val language: String? = null,
+    val index: Int
+)
+
+enum class PreviewCardType {
+    TABLE, CODE
+}
+
+/**
+ * 右侧预览边栏 - 收集所有表格和代码
+ */
+@Composable
+fun PreviewSidebar(
+    previewCards: List<PreviewCard>,
+    modifier: Modifier = Modifier
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+    var selectedCard by remember { mutableStateOf<PreviewCard?>(null) }
+    val context = LocalContext.current
+
+    Box(
+        modifier = modifier.fillMaxHeight()
+    ) {
+        if (isExpanded) {
+            // 展开状态：显示完整边栏
+            Surface(
+                color = Color.White,
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(80.dp)
+                    .align(Alignment.CenterEnd)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // 顶部标题栏
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "内容",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        )
+                        IconButton(
+                            onClick = { isExpanded = false },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
+                                contentDescription = "收起",
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Color.Black.copy(alpha = 0.1f))
+
+                    // 预览卡片列表
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(vertical = 8.dp)
+                    ) {
+                        items(previewCards.size) { index ->
+                            PreviewCardItem(
+                                card = previewCards[index],
+                                onClick = {
+                                    selectedCard = previewCards[index]
+                                    Log.d("PreviewSidebar", "点击卡片: ${previewCards[index].title}")
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            // 收起状态：只显示小按钮
+            Surface(
+                color = Color.White,
+                shadowElevation = 4.dp,
+                shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .clickable { isExpanded = true }
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        painter = painterResource(id = android.R.drawable.ic_menu_view),
+                        contentDescription = "展开预览",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${previewCards.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+
+    // 显示选中卡片的弹窗
+    selectedCard?.let { card ->
+        when (card.type) {
+            PreviewCardType.TABLE -> {
+                val tableRows = card.data as List<List<String>>
+                TableDialog(
+                    tableRows = tableRows,
+                    textColor = MaterialTheme.colorScheme.onSurface,
+                    codeBlockBackground = MaterialTheme.colorScheme.surfaceVariant,
+                    onDismiss = { selectedCard = null }
+                )
+            }
+            PreviewCardType.CODE -> {
+                val code = card.data as String
+                CodeDialog(
+                    code = code,
+                    language = card.language ?: "text",
+                    onDismiss = { selectedCard = null },
+                    onCodeBlockCopy = {
+                        val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("code", it)
+                        clipboardManager.setPrimaryClip(clip)
+                        Toast.makeText(context, "代码已复制", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 单个预览卡片项
+ */
+@Composable
+fun PreviewCardItem(
+    card: PreviewCard,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = Color.White,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = Color.Black.copy(alpha = 0.1f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // 图标
+            Text(
+                text = when (card.type) {
+                    PreviewCardType.TABLE -> "📊"
+                    PreviewCardType.CODE -> "💻"
+                },
+                fontSize = 20.sp
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 标题
+            Text(
+                text = card.title,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            // 序号
+            Text(
+                text = "#${card.index}",
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 8.sp,
+                color = Color.Gray
+            )
+        }
+    }
+}
+
+/**
+ * 从消息列表中提取预览卡片
+ */
+private fun extractPreviewCardsFromMessages(messages: List<Message>): List<PreviewCard> {
+    val cards = mutableListOf<PreviewCard>()
+    var tableIndex = 1
+    var codeIndex = 1
+
+    Log.d("PreviewCards", "开始提取，消息数量: ${messages.size}")
+
+    messages.forEach { message ->
+        val content = message.content
+        Log.d("PreviewCards", "处理消息，内容长度: ${content.length}")
+
+        // 1. 提取代码块
+        val codeBlockRegex = Regex("```([\\w]*)?\\n([\\s\\S]*?)```")
+        val codeBlocks = codeBlockRegex.findAll(content).toList()
+        Log.d("PreviewCards", "找到 ${codeBlocks.size} 个代码块")
+
+        codeBlocks.forEach { match ->
+            val language = match.groupValues[1].takeIf { it.isNotEmpty() } ?: "text"
+            val code = match.groupValues[2].trim()
+            val lineCount = code.lines().size
+
+            if (lineCount >= 50) {
+                cards.add(
+                    PreviewCard(
+                        id = "code_${codeIndex}_${System.currentTimeMillis()}",
+                        type = PreviewCardType.CODE,
+                        title = "代码",
+                        index = codeIndex++,
+                        language = language,
+                        // ❌ 移除 lineCount 参数
+                        data = code
+                    )
+                )
+                Log.d("PreviewCards", "添加代码卡片 #${codeIndex - 1}, 语言: $language, 行数: $lineCount")
+            }
+        }
+
+        // 2. 提取表格
+        val tableLines = content.lines().filter { it.trim().startsWith("|") }
+        Log.d("PreviewCards", "找到 ${tableLines.size} 行表格")
+
+        if (tableLines.size >= 2) {
+            // 过滤掉分隔符行（如 |---|---|）
+            val validTableLines = tableLines.filter { line ->
+                !line.replace("|", "").replace("-", "").replace(":", "").trim().isEmpty()
+            }
+
+            if (validTableLines.isNotEmpty()) {
+                // 解析表格为 List<List<String>>
+                val tableRows = validTableLines.map { line ->
+                    line.split("|")
+                        .filter { it.isNotBlank() }
+                        .map { it.trim() }
+                }
+
+                cards.add(
+                    PreviewCard(
+                        id = "table_${tableIndex}_${System.currentTimeMillis()}",
+                        type = PreviewCardType.TABLE,
+                        title = "表格",
+                        index = tableIndex++,
+                        data = tableRows
+                    )
+                )
+                Log.d("PreviewCards", "添加表格卡片 #${tableIndex - 1}, 行数: ${tableRows.size}, 列数: ${tableRows.firstOrNull()?.size ?: 0}")
+            }
+        }
+    }
+
+    Log.d("PreviewCards", "最终提取 ${cards.size} 个卡片")
+    return cards
+}
 private val JumpToBottomThreshold = 56.dp

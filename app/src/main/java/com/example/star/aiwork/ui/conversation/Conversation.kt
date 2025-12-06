@@ -76,6 +76,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.TextRange
 import java.util.UUID
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
 
 /**
  * 对话屏幕的入口点。
@@ -322,104 +324,111 @@ fun ConversationContent(
             .exclude(WindowInsets.ime),
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
     ) { paddingValues ->
-        Column(
-            Modifier.fillMaxSize().padding(paddingValues)
-                .background(color = background)
-                .border(width = 2.dp, color = borderStroke)
-                .dragAndDropTarget(shouldStartDragAndDrop = { event ->
-                    event
-                        .mimeTypes()
-                        .contains(
-                            ClipDescription.MIMETYPE_TEXT_PLAIN,
-                        )
-                }, target = dragAndDropCallback),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
         ) {
-            // 消息列表
-            Messages(
-                messages = uiState.messages,
-                navigateToProfile = navigateToProfile,
-                modifier = Modifier.weight(1f),
-                scrollState = scrollState,
-                logic = logic,
-                providerSetting = providerSetting,
-                model = model,
-                retrieveKnowledge = retrieveKnowledge,
-                scope = scope,
-                isGenerating = uiState.isGenerating
-            )
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(color = background)
+                    .border(width = 2.dp, color = borderStroke)
+                    .dragAndDropTarget(
+                        shouldStartDragAndDrop = { event ->
+                            event
+                                .mimeTypes()
+                                .contains(
+                                    ClipDescription.MIMETYPE_TEXT_PLAIN,
+                                )
+                        }, target = dragAndDropCallback
+                    ),
+            ) {
+                // 消息列表
+                Messages(
+                    messages = uiState.messages,
+                    navigateToProfile = navigateToProfile,
+                    modifier = Modifier.weight(1f),
+                    scrollState = scrollState,
+                    logic = logic,
+                    providerSetting = providerSetting,
+                    model = model,
+                    retrieveKnowledge = retrieveKnowledge,
+                    scope = scope,
+                    isGenerating = uiState.isGenerating
+                )
 
-            // 用户输入区域//f2
-            UserInput(
-                selectedImageUri = uiState.selectedImageUri,
-                onImageSelected = { uri -> uiState.selectedImageUri = uri },
-                onMessageSent = { content ->
-                    // ✅ 立即设置生成状态为 true，以便图标快速切换
-                    uiState.isGenerating = true
-                    scope.launch {
-                        logic.processMessage(
-                            inputContent = content,
-                            providerSetting = providerSetting,
-                            model = model,
-                            retrieveKnowledge = retrieveKnowledge
-                        )
-                    }
-                },
-                resetScroll = {
-                    scope.launch {
-                        scrollState.scrollToItem(0)
-                    }
-                },
-                // 让此元素处理填充，以便将 elevation 显示在导航栏后面
-                modifier = Modifier.navigationBarsPadding().imePadding(),
-                onStartRecording = {
-                    // 检查权限并开始录音
-                    if (ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.RECORD_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED
-                    ) {
-                        uiState.isRecording = true
-                        lastPartialLength = 0 // 重置部分长度跟踪器
-                        scope.launch(Dispatchers.IO) {
-                            youdaoWebSocket.connect()
-                            audioRecorder.startRecording(
-                                onAudioData = { data, size ->
-                                    // ✅ 添加这一行日志
-                                    Log.d("VoiceInput", "📤 Sending $size bytes to Youdao WebSocket")
-
-                                    youdaoWebSocket.sendAudio(data, size)
-                                },
-                                onError = { error ->
-                                    Log.e("VoiceInput", "❌ Recording error: ${error.message}")
-                                    scope.launch {
-                                        Toast.makeText(context, "录音失败: ${error.message}", Toast.LENGTH_SHORT).show()
-                                    }
-                                    uiState.isRecording = false  // ✅ 修正
-                                }
+                // 用户输入区域
+                UserInput(
+                    selectedImageUri = uiState.selectedImageUri,
+                    onImageSelected = { uri -> uiState.selectedImageUri = uri },
+                    onMessageSent = { content ->
+                        uiState.isGenerating = true
+                        scope.launch {
+                            logic.processMessage(
+                                inputContent = content,
+                                providerSetting = providerSetting,
+                                model = model,
+                                retrieveKnowledge = retrieveKnowledge
                             )
                         }
-                    } else {
-                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    }
-                },
-                onStopRecording = {
-                    // 停止录音并关闭 socket
-                    if (uiState.isRecording) {
-                        uiState.isRecording = false
-                        audioRecorder.stopRecording()
-                        youdaoWebSocket.close()
-                    }
-                },
-                isRecording = uiState.isRecording,
-                isGenerating = uiState.isGenerating,
-                onPauseStream = {
-                    scope.launch {
-                        logic.cancelStreaming()
-                    }
-                },
-                textFieldValue = uiState.textFieldValue,
-                onTextChanged = { uiState.textFieldValue = it }
-            )
+                    },
+                    resetScroll = {
+                        scope.launch {
+                            scrollState.scrollToItem(0)
+                        }
+                    },
+                    modifier = Modifier.navigationBarsPadding().imePadding(),
+                    onStartRecording = {
+                        if (ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.RECORD_AUDIO
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            uiState.isRecording = true
+                            lastPartialLength = 0
+                            scope.launch(Dispatchers.IO) {
+                                youdaoWebSocket.connect()
+                                audioRecorder.startRecording(
+                                    onAudioData = { data, size ->
+                                        Log.d("VoiceInput", "📤 Sending $size bytes to Youdao WebSocket")
+                                        youdaoWebSocket.sendAudio(data, size)
+                                    },
+                                    onError = { error ->
+                                        Log.e("VoiceInput", "❌ Recording error: ${error.message}")
+                                        scope.launch {
+                                            Toast.makeText(
+                                                context,
+                                                "录音失败: ${error.message}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                        uiState.isRecording = false
+                                    }
+                                )
+                            }
+                        } else {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    onStopRecording = {
+                        if (uiState.isRecording) {
+                            uiState.isRecording = false
+                            audioRecorder.stopRecording()
+                            youdaoWebSocket.close()
+                        }
+                    },
+                    isRecording = uiState.isRecording,
+                    isGenerating = uiState.isGenerating,
+                    onPauseStream = {
+                        scope.launch {
+                            logic.cancelStreaming()
+                        }
+                    },
+                    textFieldValue = uiState.textFieldValue,
+                    onTextChanged = { uiState.textFieldValue = it }
+                )
+            }
         }
     }
 }
