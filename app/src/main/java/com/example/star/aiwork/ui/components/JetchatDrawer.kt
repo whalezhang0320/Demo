@@ -601,7 +601,7 @@ private fun ChatItem(
             text,
             style = MaterialTheme.typography.bodyMedium,
             color = if (selected) {
-                MaterialTheme.colorScheme.surfaceVariant
+                MaterialTheme.colorScheme.onPrimaryContainer
             } else {
                 MaterialTheme.colorScheme.onSurface
             },

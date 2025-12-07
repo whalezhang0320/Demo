@@ -119,7 +119,7 @@ fun Messages(
     retrieveKnowledge: suspend (String) -> String = { "" },
     scope: CoroutineScope? = null,
     isGenerating: Boolean = false,
-    uiState: ConversationUiState? = null  // ← 新增参数
+    uiState: ConversationUiState  // ← 新增参数
 ) {
     val coroutineScope = scope ?: rememberCoroutineScope()
 
@@ -2133,10 +2133,19 @@ fun PreviewCardItem(
     var displayTitle by remember { mutableStateOf(card.title) }
 
     // ========== 标题生成逻辑 ==========
-    LaunchedEffect(card.id) {
+    LaunchedEffect(card.id,
+        uiState?.generateChatNameUseCase,      // ← 新增依赖
+        uiState?.activeProviderSetting,        // ← 新增依赖
+        uiState?.activeModel                   // ← 新增依赖
+    ) {
         val useCase = uiState?.generateChatNameUseCase
         val provider = uiState?.activeProviderSetting
         val model = uiState?.activeModel
+
+        Log.d("PreviewCardItem", "检查生成条件:")
+        Log.d("PreviewCardItem", "- UseCase: ${useCase != null}")
+        Log.d("PreviewCardItem", "- Provider: ${provider?.name}")
+        Log.d("PreviewCardItem", "- Model: ${model?.modelId}")
 
         // 只有在所有必要组件都存在时才生成标题
         if (useCase != null && provider != null && model != null) {
