@@ -97,9 +97,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import android.util.Log
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import com.example.star.aiwork.domain.usecase.GenerateChatNameUseCase
+import com.example.star.aiwork.ui.conversation.util.PythonHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.withContext
 
 const val ConversationTestTag = "ConversationTestTag"
 
@@ -119,7 +125,7 @@ fun Messages(
     retrieveKnowledge: suspend (String) -> String = { "" },
     scope: CoroutineScope? = null,
     isGenerating: Boolean = false,
-    uiState: ConversationUiState? = null  // ← 新增参数
+    uiState: ConversationUiState? = null,  // ← 新增参数
 ) {
     val coroutineScope = scope ?: rememberCoroutineScope()
 
@@ -183,7 +189,7 @@ fun Messages(
                                 logic?.rollbackAndRegenerate(
                                     providerSetting = providerSetting,
                                     model = model,
-                                    retrieveKnowledge = retrieveKnowledge
+                                    retrieveKnowledge = retrieveKnowledge,
                                 )
                             }
                         },
@@ -196,7 +202,7 @@ fun Messages(
                         onMoreClick = {
                             // TODO: 实现更多操作功能
                         },
-                        isGenerating = isGenerating
+                        isGenerating = isGenerating,
                     )
                 }
             }
@@ -230,7 +236,7 @@ fun Messages(
             PreviewSidebar(
                 previewCards = previewCards,
                 modifier = Modifier.align(Alignment.CenterEnd),
-                uiState = uiState  // ← 新增参数
+                uiState = uiState,  // ← 新增参数
             )
         } else {
             Log.d("Messages", "没有预览卡片，不显示边栏")
@@ -254,7 +260,7 @@ fun Message(
     onThumbUpClick: () -> Unit = {},
     onThumbDownClick: () -> Unit = {},
     onMoreClick: () -> Unit = {},
-    isGenerating: Boolean = false
+    isGenerating: Boolean = false,
 ) {
     val borderColor = if (isUserMe) {
         MaterialTheme.colorScheme.primary
@@ -266,7 +272,7 @@ fun Message(
 
     Row(
         modifier = spaceBetweenAuthors.fillMaxWidth(),
-        horizontalArrangement = if (isUserMe) Arrangement.End else Arrangement.Start
+        horizontalArrangement = if (isUserMe) Arrangement.End else Arrangement.Start,
     ) {
         // 删除了 AI 头像显示部分
 
@@ -286,9 +292,9 @@ fun Message(
             modifier = Modifier
                 .padding(
                     end = if (isUserMe) 16.dp else 16.dp,
-                    start = if (isUserMe) 0.dp else 16.dp
+                    start = if (isUserMe) 0.dp else 16.dp,
                 )
-                .widthIn(max = if (isUserMe) 300.dp else 370.dp)  // ← 改成这1行
+                .widthIn(max = if (isUserMe) 300.dp else 370.dp),  // ← 改成这1行
         )
     }
 }
@@ -310,7 +316,7 @@ fun AuthorAndTextMessage(
     onThumbUpClick: () -> Unit = {},
     onThumbDownClick: () -> Unit = {},
     onMoreClick: () -> Unit = {},
-    isGenerating: Boolean = false
+    isGenerating: Boolean = false,
 ) {
     Column(modifier = modifier) {
         if (isLastMessageByAuthor && !isUserMe) {
@@ -331,7 +337,7 @@ fun AuthorAndTextMessage(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.Start
+                horizontalArrangement = Arrangement.Start,
             ) {
                 // 1. 复制按钮
                 if (showCopyButton) {
@@ -339,13 +345,13 @@ fun AuthorAndTextMessage(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(msg.content))
                         },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(32.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
                             contentDescription = "复制",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                 }
@@ -353,26 +359,26 @@ fun AuthorAndTextMessage(
                 // 2. 点赞按钮
                 IconButton(
                     onClick = onThumbUpClick,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Default.ThumbUp,
                         contentDescription = "点赞",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(18.dp),
                     )
                 }
                 
                 // 3. 点踩按钮
                 IconButton(
                     onClick = onThumbDownClick,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Default.ThumbDown,
                         contentDescription = "点踩",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(18.dp),
                     )
                 }
                 
@@ -380,13 +386,13 @@ fun AuthorAndTextMessage(
                 if (showRegenerate) {
                     IconButton(
                         onClick = onRegenerateClick,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(32.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "重新生成",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                 }
@@ -394,13 +400,13 @@ fun AuthorAndTextMessage(
                 // 5. 更多操作按钮
                 IconButton(
                     onClick = onMoreClick,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreHoriz,
                         contentDescription = "更多操作",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -476,7 +482,7 @@ private fun RowScope.DayHeaderLine() {
 fun ChatItemBubble(
     message: Message,
     isUserMe: Boolean,
-    authorClicked: (String) -> Unit
+    authorClicked: (String) -> Unit,
 ) {
     val isSystemMessage = message.author == "System"
 
@@ -505,8 +511,8 @@ fun ChatItemBubble(
             modifier = Modifier.border(
                 width = 1.dp,
                 color = borderColor,
-                shape = getChatBubbleShape(isUserMe)  // 修改这里
-            )
+                shape = getChatBubbleShape(isUserMe),  // 修改这里
+            ),
         ) {
             Column {
                 // 消息内容
@@ -519,7 +525,7 @@ fun ChatItemBubble(
                     MarkdownMessage(
                         message = message,
                         isUserMe = isUserMe,
-                        authorClicked = authorClicked
+                        authorClicked = authorClicked,
                     )
                 }
             }
@@ -535,8 +541,8 @@ fun ChatItemBubble(
                 modifier = Modifier.border(
                     width = 1.dp,
                     color = borderColor,
-                    shape = getChatBubbleShape(isUserMe)  // 修改这里
-                )
+                    shape = getChatBubbleShape(isUserMe),  // 修改这里
+                ),
             ) {
                 AsyncImage(
                     model = message.imageUrl,
@@ -554,8 +560,8 @@ fun ChatItemBubble(
                 modifier = Modifier.border(
                     width = 1.dp,
                     color = borderColor,
-                    shape = getChatBubbleShape(isUserMe)  // 修改这里
-                )
+                    shape = getChatBubbleShape(isUserMe),  // 修改这里
+                ),
             ) {
                 Image(
                     painter = painterResource(message.image),
@@ -575,7 +581,7 @@ fun ChatItemBubble(
 fun MarkdownMessage(
     message: Message,
     isUserMe: Boolean,
-    authorClicked: (String) -> Unit
+    authorClicked: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -614,7 +620,7 @@ fun MarkdownMessage(
                     if (!expanded && textLayoutResult.hasVisualOverflow) {
                         showExpandButton = true
                     }
-                }
+                },
             )
 
             if (showExpandButton) {
@@ -625,7 +631,7 @@ fun MarkdownMessage(
                     modifier = Modifier
                         .align(Alignment.End)
                         .clickable { expanded = !expanded }
-                        .padding(top = 4.dp)
+                        .padding(top = 4.dp),
                 )
             }
         }
@@ -639,14 +645,14 @@ fun MarkdownMessage(
                 onCodeBlockCopy = { code ->
                     clipboardManager.setText(AnnotatedString(code))
                     Toast.makeText(context, "代码已复制", Toast.LENGTH_SHORT).show()
-                }
+                },
             )
         }
     }
 }
 
 /**
- * 代码块组件 - 带行号、语法高亮和复制按钮（完美对齐）
+ * 代码块组件 - 带行号、语法高亮、复制按钮和 **Python 运行按钮**
  */
 @Composable
 fun CodeBlockWithCopyButton(
@@ -654,8 +660,17 @@ fun CodeBlockWithCopyButton(
     language: String,
     onCopy: () -> Unit,
     backgroundColor: Color,
-    textColor: Color
+    textColor: Color,
 ) {
+    // 上下文和协程作用域
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // 运行状态管理
+    var isRunning by remember { mutableStateOf(false) }
+    var executionResult by remember { mutableStateOf<String?>(null) }
+    var showResultDialog by remember { mutableStateOf(false) }
+
     // 固定使用 VS Code Dark+ 配色
     val codeBackground = Color(0xFF1E1E1E)
     val topBarBackground = Color(0xFF2D2D2D)
@@ -663,18 +678,36 @@ fun CodeBlockWithCopyButton(
     val lineNumberColor = Color(0xFF858585)
 
     val lines = code.split("\n")
+    // 假设 highlightCode 是你现有的函数
     val highlightedCode = highlightCode(code, language.lowercase())
     val codeLines = getHighlightedLines(highlightedCode, lines.size)
+
+    // 处理运行逻辑
+    fun runPythonCode() {
+        if (isRunning) return
+        isRunning = true
+
+        scope.launch(Dispatchers.IO) {
+            // 调用你提供的 PythonHelper
+            val result = PythonHelper.runPythonCode(context, code)
+
+            withContext(Dispatchers.Main) {
+                executionResult = result
+                isRunning = false
+                showResultDialog = true
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 8.dp),
     ) {
         Surface(
             color = codeBackground,
             shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Column {
                 // 代码块顶部栏
@@ -684,25 +717,57 @@ fun CodeBlockWithCopyButton(
                         .background(topBarBackground)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         text = language.lowercase(),
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF858585),
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(end = 8.dp),
                     )
 
-                    IconButton(
-                        onClick = onCopy,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "复制代码",
-                            tint = Color(0xFF858585),
-                            modifier = Modifier.size(14.dp)
-                        )
+                    // 右侧按钮组
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+
+                        // --- 新增：运行按钮 (仅当语言是 Python 时显示) ---
+                        if (language.lowercase() == "python") {
+                            IconButton(
+                                onClick = { runPythonCode() },
+                                modifier = Modifier.size(24.dp),
+                                enabled = !isRunning,
+                            ) {
+                                if (isRunning) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color(0xFF4CAF50),
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = "运行代码",
+                                        tint = Color(0xFF4CAF50), // 绿色代表运行
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+
+                            // 按钮之间的间距
+                            Spacer(modifier = Modifier.width(16.dp))
+                        }
+                        // ------------------------------------------------
+
+                        IconButton(
+                            onClick = onCopy,
+                            modifier = Modifier.size(24.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "复制代码",
+                                tint = Color(0xFF858585),
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
                     }
                 }
 
@@ -710,41 +775,38 @@ fun CodeBlockWithCopyButton(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
+                        .horizontalScroll(rememberScrollState()),
                 ) {
                     Column(
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        modifier = Modifier.padding(vertical = 12.dp),
                     ) {
-                        // 每一行都是一个 Row，包含行号和代码
                         codeLines.forEachIndexed { index, lineText ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.Top
+                                verticalAlignment = Alignment.Top,
                             ) {
-                                // 行号 - 去掉灰色背景，左对齐
                                 Text(
                                     text = "${index + 1}",
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = FontFamily.Monospace,
                                         lineHeight = 20.sp,
-                                        fontSize = 14.sp
+                                        fontSize = 14.sp,
                                     ),
                                     color = lineNumberColor,
                                     modifier = Modifier
                                         .padding(start = 12.dp, end = 16.dp)
                                         .widthIn(min = 32.dp),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
                                 )
 
-                                // 代码内容
                                 Text(
                                     text = lineText,
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontFamily = FontFamily.Monospace,
                                         lineHeight = 20.sp,
-                                        fontSize = 14.sp
+                                        fontSize = 14.sp,
                                     ),
-                                    modifier = Modifier.padding(end = 12.dp)
+                                    modifier = Modifier.padding(end = 12.dp),
                                 )
                             }
                         }
@@ -752,6 +814,35 @@ fun CodeBlockWithCopyButton(
                 }
             }
         }
+    }
+
+    // --- 新增：运行结果弹窗 ---
+    if (showResultDialog && executionResult != null) {
+        AlertDialog(
+            onDismissRequest = { showResultDialog = false },
+            title = { Text("运行结果") },
+            text = {
+                Column {
+                    Surface(
+                        color = Color(0xFFF5F5F5),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = executionResult!!,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(8.dp),
+                            color = Color.Black,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showResultDialog = false }) {
+                    Text("关闭")
+                }
+            },
+        )
     }
 }
 
@@ -803,12 +894,12 @@ fun LoadingIndicator() {
         modifier = Modifier
             .padding(16.dp)
             .size(32.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator(
             modifier = Modifier.size(24.dp),
             strokeWidth = 2.5.dp,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.primary,
         )
     }
 }
@@ -822,7 +913,7 @@ fun SimpleMarkdownRenderer(
     textColor: Color,
     codeBlockBackground: Color,
     codeTextColor: Color,
-    onCodeBlockCopy: (String) -> Unit
+    onCodeBlockCopy: (String) -> Unit,
 ) {
     val codeBlockRegex = Regex("```([\\w]*)?\\n([\\s\\S]*?)```")
     val matches = codeBlockRegex.findAll(markdown).toList()
@@ -853,7 +944,7 @@ fun SimpleMarkdownRenderer(
                         code = code,
                         language = language,
                         lineCount = lineCount,
-                        onCodeBlockCopy = onCodeBlockCopy
+                        onCodeBlockCopy = onCodeBlockCopy,
                     )
                 } else {
                     CodeBlockWithCopyButton(
@@ -861,7 +952,7 @@ fun SimpleMarkdownRenderer(
                         language = language,
                         onCopy = { onCodeBlockCopy(code) },
                         backgroundColor = codeBlockBackground,
-                        textColor = codeTextColor
+                        textColor = codeTextColor,
                     )
                 }
 
@@ -885,7 +976,7 @@ fun SimpleMarkdownRenderer(
 fun RenderMarkdownText(
     markdown: String,
     textColor: Color,
-    codeBlockBackground: Color
+    codeBlockBackground: Color,
 ) {
     val lines = markdown.split("\n")
     var inTable = false
@@ -911,7 +1002,7 @@ fun RenderMarkdownText(
                     TableCard(
                         tableRows = tableRows,
                         textColor = textColor,
-                        codeBlockBackground = codeBlockBackground
+                        codeBlockBackground = codeBlockBackground,
                     )
                 }
                 inTable = false
@@ -924,7 +1015,7 @@ fun RenderMarkdownText(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp),
-                    color = textColor.copy(alpha = 0.3f)
+                    color = textColor.copy(alpha = 0.3f),
                 )
                 i++
                 continue
@@ -945,7 +1036,7 @@ fun RenderMarkdownText(
                         5 -> MaterialTheme.typography.titleMedium
                         else -> MaterialTheme.typography.titleSmall
                     },
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    modifier = Modifier.padding(vertical = 4.dp),
                 )
                 i++
                 continue
@@ -960,11 +1051,11 @@ fun RenderMarkdownText(
                         text = "• ",
                         style = MaterialTheme.typography.bodyLarge,
                         color = textColor,
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(end = 8.dp),
                     )
                     Text(
                         text = parseInlineMarkdown(text, textColor, codeBlockBackground),
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
                 i++
@@ -981,11 +1072,11 @@ fun RenderMarkdownText(
                         text = "$number. ",
                         style = MaterialTheme.typography.bodyLarge,
                         color = textColor,
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(end = 8.dp),
                     )
                     Text(
                         text = parseInlineMarkdown(text, textColor, codeBlockBackground),
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
                 i++
@@ -999,21 +1090,21 @@ fun RenderMarkdownText(
                 Surface(
                     color = codeBlockBackground.copy(alpha = 0.3f),
                     shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    modifier = Modifier.padding(vertical = 4.dp),
                 ) {
                     Row {
                         Box(
                             modifier = Modifier
                                 .width(4.dp)
                                 .height(32.dp)
-                                .background(textColor.copy(alpha = 0.5f))
+                                .background(textColor.copy(alpha = 0.5f)),
                         )
                         Text(
                             text = parseInlineMarkdown(text, textColor, codeBlockBackground),
                             style = MaterialTheme.typography.bodyLarge.copy(
-                                fontStyle = FontStyle.Italic
+                                fontStyle = FontStyle.Italic,
                             ),
-                            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 12.dp)
+                            modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 12.dp),
                         )
                     }
                 }
@@ -1026,7 +1117,7 @@ fun RenderMarkdownText(
                 Text(
                     text = parseInlineMarkdown(line, textColor, codeBlockBackground),
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(vertical = 2.dp)
+                    modifier = Modifier.padding(vertical = 2.dp),
                 )
             } else {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1040,7 +1131,7 @@ fun RenderMarkdownText(
             TableCard(
                 tableRows = tableRows,
                 textColor = textColor,
-                codeBlockBackground = codeBlockBackground
+                codeBlockBackground = codeBlockBackground,
             )
         }
     }
@@ -1053,13 +1144,13 @@ fun RenderMarkdownText(
 fun RenderTable(
     rows: List<List<String>>,
     textColor: Color,
-    codeBlockBackground: Color
+    codeBlockBackground: Color,
 ) {
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(12.dp),
         shadowElevation = 2.dp,
-        modifier = Modifier.padding(vertical = 8.dp)
+        modifier = Modifier.padding(vertical = 8.dp),
     ) {
         Column {
             rows.forEachIndexed { rowIndex, cells ->
@@ -1084,7 +1175,7 @@ fun RenderTable(
                     Row(
                         modifier = Modifier
                             .background(rowBackground)
-                            .fillMaxWidth()
+                            .fillMaxWidth(),
                     ) {
                         cells.forEachIndexed { cellIndex, cell ->
                             val processedCell = cell
@@ -1099,24 +1190,24 @@ fun RenderTable(
                             Box(
                                 modifier = Modifier
                                     .width(140.dp)
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
                             ) {
                                 Text(
                                     text = parseInlineMarkdown(
                                         processedCell,
                                         if (isHeader) Color.White else textColor,
-                                        codeBlockBackground
+                                        codeBlockBackground,
                                     ),
                                     style = if (isHeader) {
                                         MaterialTheme.typography.titleSmall.copy(
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
                                         )
                                     } else {
                                         MaterialTheme.typography.bodyMedium
                                     },
                                     color = if (isHeader) Color.White else textColor,
                                     maxLines = Int.MAX_VALUE,
-                                    softWrap = true
+                                    softWrap = true,
                                 )
                             }
 
@@ -1131,8 +1222,8 @@ fun RenderTable(
                                                 Color.White.copy(alpha = 0.3f)
                                             } else {
                                                 Color(0xFFE0E0E0)
-                                            }
-                                        )
+                                            },
+                                        ),
                                 )
                             }
                         }
@@ -1146,7 +1237,7 @@ fun RenderTable(
                             } else {
                                 Color(0xFFE0E0E0)
                             },
-                            thickness = if (isHeader) 2.dp else 1.dp
+                            thickness = if (isHeader) 2.dp else 1.dp,
                         )
                     }
                 }
@@ -1162,7 +1253,7 @@ fun RenderTable(
 fun TableCard(
     tableRows: List<List<String>>,
     textColor: Color,
-    codeBlockBackground: Color
+    codeBlockBackground: Color,
 ) {
     val cachedTableRows = remember(tableRows) { tableRows.toList() }
     var showDialog by remember { mutableStateOf(false) }
@@ -1174,23 +1265,23 @@ fun TableCard(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clickable { showDialog = true },
-        shadowElevation = 2.dp
+        shadowElevation = 2.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
             ) {
                 // 直接显示图标，无背景
                 Text(
                     text = "📊",
-                    fontSize = 28.sp
+                    fontSize = 28.sp,
                 )
 
                 Spacer(modifier = Modifier.width(14.dp))
@@ -1199,15 +1290,15 @@ fun TableCard(
                     Text(
                         text = "点击查看表格",
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         ),
-                        color = Color.Black.copy(alpha = 0.87f)
+                        color = Color.Black.copy(alpha = 0.87f),
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "${cachedTableRows.size} 行 × ${cachedTableRows.firstOrNull()?.size ?: 0} 列",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Black.copy(alpha = 0.6f)
+                        color = Color.Black.copy(alpha = 0.6f),
                     )
                 }
             }
@@ -1217,7 +1308,7 @@ fun TableCard(
                 painter = painterResource(id = android.R.drawable.ic_menu_view),
                 contentDescription = "查看表格",
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(24.dp),
             )
         }
     }
@@ -1227,7 +1318,7 @@ fun TableCard(
             tableRows = cachedTableRows,
             textColor = textColor,
             codeBlockBackground = codeBlockBackground,
-            onDismiss = { showDialog = false }
+            onDismiss = { showDialog = false },
         )
     }
 }
@@ -1240,7 +1331,7 @@ fun CodePreviewCard(
     code: String,
     language: String,
     lineCount: Int,
-    onCodeBlockCopy: (String) -> Unit
+    onCodeBlockCopy: (String) -> Unit,
 ) {
     val cachedCode = remember(code) { code }
     var showDialog by remember { mutableStateOf(false) }
@@ -1252,23 +1343,23 @@ fun CodePreviewCard(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clickable { showDialog = true },
-        shadowElevation = 2.dp
+        shadowElevation = 2.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
             ) {
                 // 代码图标
                 Text(
                     text = "💻",
-                    fontSize = 28.sp
+                    fontSize = 28.sp,
                 )
 
                 Spacer(modifier = Modifier.width(14.dp))
@@ -1277,15 +1368,15 @@ fun CodePreviewCard(
                     Text(
                         text = "点击查看代码",
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         ),
-                        color = Color.Black.copy(alpha = 0.87f)
+                        color = Color.Black.copy(alpha = 0.87f),
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "$language · $lineCount 行",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Black.copy(alpha = 0.6f)
+                        color = Color.Black.copy(alpha = 0.6f),
                     )
                 }
             }
@@ -1295,7 +1386,7 @@ fun CodePreviewCard(
                 painter = painterResource(id = android.R.drawable.ic_menu_view),
                 contentDescription = "查看代码",
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(24.dp),
             )
         }
     }
@@ -1305,7 +1396,7 @@ fun CodePreviewCard(
             code = cachedCode,
             language = language,
             onDismiss = { showDialog = false },
-            onCodeBlockCopy = onCodeBlockCopy
+            onCodeBlockCopy = onCodeBlockCopy,
         )
     }
 }
@@ -1318,26 +1409,26 @@ fun CodeDialog(
     code: String,
     language: String,
     onDismiss: () -> Unit,
-    onCodeBlockCopy: (String) -> Unit
+    onCodeBlockCopy: (String) -> Unit,
 ) {
     val context = LocalContext.current
 
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
-        )
+            usePlatformDefaultWidth = false,
+        ),
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(0xFFF8F9FA)  // 浅灰背景，与表格统一
+            color = Color(0xFFF8F9FA),  // 浅灰背景，与表格统一
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // 代码内容（可滚动）
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = 60.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+                        .padding(top = 60.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
                 ) {
                     item {
                         CodeBlockWithCopyButton(
@@ -1345,7 +1436,7 @@ fun CodeDialog(
                             language = language,
                             onCopy = { onCodeBlockCopy(code) },
                             backgroundColor = Color(0xFF1E1E1E),
-                            textColor = Color(0xFFD4D4D4)
+                            textColor = Color(0xFFD4D4D4),
                         )
                     }
                 }
@@ -1356,23 +1447,25 @@ fun CodeDialog(
                     shadowElevation = 4.dp,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .fillMaxWidth()
+                        .fillMaxWidth(),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         // 分享按钮
-                        IconButton(onClick = {
-                            shareCodeAsFile(context, code, language)
-                        }) {
+                        IconButton(
+                            onClick = {
+                                shareCodeAsFile(context, code, language)
+                            },
+                        ) {
                             Icon(
                                 painter = painterResource(id = android.R.drawable.ic_menu_share),
                                 contentDescription = "分享",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = MaterialTheme.colorScheme.primary,
                             )
                         }
 
@@ -1383,7 +1476,7 @@ fun CodeDialog(
                             Icon(
                                 painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
                                 contentDescription = "关闭",
-                                tint = MaterialTheme.colorScheme.onSurface
+                                tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     }
@@ -1401,30 +1494,30 @@ fun TableDialog(
     tableRows: List<List<String>>,
     textColor: Color,
     codeBlockBackground: Color,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
 
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
-        )
+            usePlatformDefaultWidth = false,
+        ),
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(0xFFF8F9FA)  // 浅灰背景，更现代
+            color = Color(0xFFF8F9FA),  // 浅灰背景，更现代
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // 表格内容（可横向和纵向滚动）
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = 60.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+                        .padding(top = 60.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
                 ) {
                     item {
                         Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState())
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
                         ) {
                             RenderTable(tableRows, textColor, codeBlockBackground)
                         }
@@ -1437,23 +1530,25 @@ fun TableDialog(
                     shadowElevation = 4.dp,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .fillMaxWidth()
+                        .fillMaxWidth(),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         // 分享按钮
-                        IconButton(onClick = {
-                            shareTableAsFile(context, tableRows)
-                        }) {
+                        IconButton(
+                            onClick = {
+                                shareTableAsFile(context, tableRows)
+                            },
+                        ) {
                             Icon(
                                 painter = painterResource(id = android.R.drawable.ic_menu_share),
                                 contentDescription = "分享",
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = MaterialTheme.colorScheme.primary,
                             )
                         }
 
@@ -1464,7 +1559,7 @@ fun TableDialog(
                             Icon(
                                 painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
                                 contentDescription = "关闭",
-                                tint = MaterialTheme.colorScheme.onSurface
+                                tint = MaterialTheme.colorScheme.onSurface,
                             )
                         }
                     }
@@ -1496,7 +1591,7 @@ private fun shareTableAsFile(context: android.content.Context, tableRows: List<L
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
-            file
+            file,
         )
 
         // 创建分享 Intent
@@ -1520,7 +1615,7 @@ private fun shareTableAsFile(context: android.content.Context, tableRows: List<L
 private fun shareCodeAsFile(
     context: android.content.Context,
     code: String,
-    language: String
+    language: String,
 ) {
     try {
         // 根据语言确定文件扩展名
@@ -1555,7 +1650,7 @@ private fun shareCodeAsFile(
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
-            file
+            file,
         )
 
         // 创建分享 Intent
@@ -1665,7 +1760,7 @@ fun renderMarkdownContent(content: String, isUserMe: Boolean): List<MarkdownElem
 fun parseInlineMarkdown(
     text: String,
     baseColor: Color,
-    codeBlockBackground: Color
+    codeBlockBackground: Color,
 ): AnnotatedString {
     return buildAnnotatedString {
         var currentIndex = 0
@@ -1678,7 +1773,7 @@ fun parseInlineMarkdown(
             Regex("_(.+?)_") to "italic",                // _斜体_
             Regex("~~(.+?)~~") to "strikethrough",       // ~~删除线~~
             Regex("`(.+?)`") to "code",                  // `行内代码`
-            Regex("\\[(.+?)\\]\\((.+?)\\)") to "link"    // [链接](url)
+            Regex("\\[(.+?)\\]\\((.+?)\\)") to "link",    // [链接](url)
         )
 
         val allMatches = mutableListOf<Triple<IntRange, String, String>>()
@@ -1723,10 +1818,12 @@ fun parseInlineMarkdown(
                     }
                 }
                 "strikethrough" -> {
-                    withStyle(SpanStyle(
-                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
-                        color = baseColor
-                    )) {
+                    withStyle(
+                        SpanStyle(
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                            color = baseColor,
+                        ),
+                    ) {
                         append(content)
                     }
                 }
@@ -1735,8 +1832,8 @@ fun parseInlineMarkdown(
                         SpanStyle(
                             fontFamily = FontFamily.Monospace,
                             background = codeBlockBackground.copy(alpha = 0.3f),
-                            color = baseColor
-                        )
+                            color = baseColor,
+                        ),
                     ) {
                         append(content)
                     }
@@ -1745,8 +1842,8 @@ fun parseInlineMarkdown(
                     withStyle(
                         SpanStyle(
                             color = Color(0xFF2196F3), // 蓝色链接
-                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
-                        )
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                        ),
                     ) {
                         append(content)
                     }
@@ -1813,7 +1910,7 @@ private fun AnnotatedString.Builder.highlightJavaKotlin(code: String) {
         "try", "void", "volatile", "while", "true", "false", "null",
         // Kotlin 关键字
         "fun", "val", "var", "when", "is", "in", "object", "companion", "data",
-        "sealed", "open", "internal", "inline", "suspend", "lateinit", "by"
+        "sealed", "open", "internal", "inline", "suspend", "lateinit", "by",
     )
 
     val lines = code.split("\n")
@@ -1848,7 +1945,7 @@ private fun AnnotatedString.Builder.highlightPython(code: String) {
         "break", "class", "continue", "def", "del", "elif", "else", "except",
         "finally", "for", "from", "global", "if", "import", "in", "is",
         "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
-        "try", "while", "with", "yield", "self", "print"
+        "try", "while", "with", "yield", "self", "print",
     )
 
     val lines = code.split("\n")
@@ -1883,7 +1980,7 @@ private fun AnnotatedString.Builder.highlightJavaScript(code: String) {
         "long", "native", "new", "null", "package", "private", "protected",
         "public", "return", "short", "static", "super", "switch", "synchronized",
         "this", "throw", "throws", "transient", "true", "try", "typeof", "var",
-        "void", "volatile", "while", "with", "yield", "async"
+        "void", "volatile", "while", "with", "yield", "async",
     )
 
     val lines = code.split("\n")
@@ -1974,7 +2071,7 @@ data class PreviewCard(
     val title: String,
     val data: Any,
     val language: String? = null,
-    val index: Int
+    val index: Int,
 )
 
 enum class PreviewCardType {
@@ -1988,14 +2085,14 @@ enum class PreviewCardType {
 fun PreviewSidebar(
     previewCards: List<PreviewCard>,
     modifier: Modifier = Modifier,
-    uiState: ConversationUiState? = null  // ← 新增参数
+    uiState: ConversationUiState? = null,  // ← 新增参数
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var selectedCard by remember { mutableStateOf<PreviewCard?>(null) }
     val context = LocalContext.current
 
     Box(
-        modifier = modifier.fillMaxHeight()
+        modifier = modifier.fillMaxHeight(),
     ) {
         if (isExpanded) {
             // 展开状态：显示完整边栏
@@ -2005,10 +2102,10 @@ fun PreviewSidebar(
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(80.dp)
-                    .align(Alignment.CenterEnd)
+                    .align(Alignment.CenterEnd),
             ) {
                 Column(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     // 顶部标题栏
                     Row(
@@ -2016,22 +2113,22 @@ fun PreviewSidebar(
                             .fillMaxWidth()
                             .padding(8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             text = "内容",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp
+                            fontSize = 10.sp,
                         )
                         IconButton(
                             onClick = { isExpanded = false },
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(20.dp),
                         ) {
                             Icon(
                                 painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
                                 contentDescription = "收起",
-                                modifier = Modifier.size(12.dp)
+                                modifier = Modifier.size(12.dp),
                             )
                         }
                     }
@@ -2043,7 +2140,7 @@ fun PreviewSidebar(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 8.dp),
                     ) {
                         items(previewCards.size) { index ->
                             PreviewCardItem(
@@ -2052,7 +2149,7 @@ fun PreviewSidebar(
                                     selectedCard = previewCards[index]
                                     Log.d("PreviewSidebar", "点击卡片: ${previewCards[index].title}")
                                 },
-                                uiState = uiState  // ← 新增参数
+                                uiState = uiState,  // ← 新增参数
                             )
                         }
                     }
@@ -2066,24 +2163,24 @@ fun PreviewSidebar(
                 shape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp),
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .clickable { isExpanded = true }
+                    .clickable { isExpanded = true },
             ) {
                 Column(
                     modifier = Modifier.padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Icon(
                         painter = painterResource(id = android.R.drawable.ic_menu_view),
                         contentDescription = "展开预览",
                         modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "${previewCards.size}",
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
@@ -2099,7 +2196,7 @@ fun PreviewSidebar(
                     tableRows = tableRows,
                     textColor = MaterialTheme.colorScheme.onSurface,
                     codeBlockBackground = MaterialTheme.colorScheme.surfaceVariant,
-                    onDismiss = { selectedCard = null }
+                    onDismiss = { selectedCard = null },
                 )
             }
             PreviewCardType.CODE -> {
@@ -2109,11 +2206,12 @@ fun PreviewSidebar(
                     language = card.language ?: "text",
                     onDismiss = { selectedCard = null },
                     onCodeBlockCopy = {
-                        val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clipboardManager =
+                            context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                         val clip = android.content.ClipData.newPlainText("code", it)
                         clipboardManager.setPrimaryClip(clip)
                         Toast.makeText(context, "代码已复制", Toast.LENGTH_SHORT).show()
-                    }
+                    },
                 )
             }
         }
@@ -2127,7 +2225,7 @@ fun PreviewSidebar(
 fun PreviewCardItem(
     card: PreviewCard,
     onClick: () -> Unit,
-    uiState: ConversationUiState? = null
+    uiState: ConversationUiState? = null,
 ) {
     // 卡片显示的标题状态（独立状态，每个卡片互不干扰）
     var displayTitle by remember { mutableStateOf(card.title) }
@@ -2171,7 +2269,7 @@ fun PreviewCardItem(
                     providerSetting = provider,
                     model = model,
                     temperature = 0.3f,  // 较低温度，获得稳定标题
-                    maxTokens = 30       // 标题不需要太长
+                    maxTokens = 30,       // 标题不需要太长
                 )
 
                 var generatedTitle = StringBuilder()
@@ -2218,14 +2316,14 @@ fun PreviewCardItem(
         shape = RoundedCornerShape(8.dp),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            color = Color.Black.copy(alpha = 0.1f)
-        )
+            color = Color.Black.copy(alpha = 0.1f),
+        ),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // 图标
             Text(
@@ -2233,7 +2331,7 @@ fun PreviewCardItem(
                     PreviewCardType.TABLE -> "📊"
                     PreviewCardType.CODE -> "💻"
                 },
-                fontSize = 20.sp
+                fontSize = 20.sp,
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -2245,7 +2343,7 @@ fun PreviewCardItem(
                 fontSize = 9.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
 
             // 序号
@@ -2253,7 +2351,7 @@ fun PreviewCardItem(
                 text = "#${card.index}",
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 8.sp,
-                color = Color.Gray
+                color = Color.Gray,
             )
         }
     }
@@ -2291,8 +2389,8 @@ private fun extractPreviewCardsFromMessages(messages: List<Message>): List<Previ
                         index = codeIndex++,
                         language = language,
                         // ❌ 移除 lineCount 参数
-                        data = code
-                    )
+                        data = code,
+                    ),
                 )
                 Log.d("PreviewCards", "添加代码卡片 #${codeIndex - 1}, 语言: $language, 行数: $lineCount")
             }
@@ -2322,8 +2420,8 @@ private fun extractPreviewCardsFromMessages(messages: List<Message>): List<Previ
                         type = PreviewCardType.TABLE,
                         title = "表格",
                         index = tableIndex++,
-                        data = tableRows
-                    )
+                        data = tableRows,
+                    ),
                 )
                 Log.d("PreviewCards", "添加表格卡片 #${tableIndex - 1}, 行数: ${tableRows.size}, 列数: ${tableRows.firstOrNull()?.size ?: 0}")
             }
