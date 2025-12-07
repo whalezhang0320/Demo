@@ -152,6 +152,16 @@ fun ConversationContent(
 
         uiState.activeProviderSetting = provider
         uiState.activeModel = model
+
+        // ===== 调试日志 =====
+        Log.d("ConversationContent", "初始化预览卡片生成条件:")
+        Log.d("ConversationContent", "- UseCase: ${generateChatNameUseCase != null}")
+        Log.d("ConversationContent", "- Provider: ${provider?.name} (id=${provider?.id})")
+        Log.d("ConversationContent", "- Model: ${model?.modelId}")
+        Log.d("ConversationContent", "- activeProviderId: $activeProviderId")
+        Log.d("ConversationContent", "- activeModelId: $activeModelId")
+        Log.d("ConversationContent", "- providerSettings count: ${providerSettings.size}")
+// ===== 调试日志结束 =====
     }
     // ========== 新增初始化逻辑结束 ==========
 
